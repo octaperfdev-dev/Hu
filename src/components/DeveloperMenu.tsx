@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Code, Github, User, X, Database, RefreshCw, Trash2, ShieldCheck, RefreshCcw } from 'lucide-react';
-import { seedDatabase, db, doc, updateDoc, getDoc } from '../firebase';
+import { Code, Github, User, X, Database, RefreshCw, Trash2, ShieldCheck } from 'lucide-react';
+import { seedDatabase, db, doc, updateDoc } from '../firebase';
 import { migrateMockToFirestore, clearFirestoreData, migrateSqliteToFirestore } from '../lib/migration';
 import { useAuth } from '../App';
 
@@ -99,43 +99,6 @@ export default function DeveloperMenu() {
     }
   };
 
-  const handlePromoteToAdmin = async () => {
-    if (!user) {
-      alert('Please log in first (e.g., using Google Login).');
-      return;
-    }
-    if (user.role === 'admin') {
-      alert('You are already an admin.');
-      return;
-    }
-    if (!confirm('This will promote your current account to Admin. Continue?')) return;
-    
-    try {
-      const userRef = doc(db, 'users', user.id);
-      await updateDoc(userRef, { role: 'admin' });
-      alert('Successfully promoted to Admin! Refreshing profile...');
-      await handleRefreshProfile();
-    } catch (error: any) {
-      console.error('Promotion error:', error);
-      alert(`Error promoting to admin: ${error.message}`);
-    }
-  };
-
-  const handleRefreshProfile = async () => {
-    if (!user) return;
-    try {
-      const userDoc = await getDoc(doc(db, 'users', user.id));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        localStorage.setItem('user', JSON.stringify({ ...userData, id: user.id }));
-        alert('Profile refreshed! Reloading page...');
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error('Refresh error:', error);
-    }
-  };
-
   return (
     <>
       {/* Floating Button */}
@@ -158,20 +121,12 @@ export default function DeveloperMenu() {
             className="fixed bottom-24 right-6 z-50 w-72 bg-white/70 backdrop-blur-xl rounded-3xl p-6 border border-white/40 shadow-2xl"
           >
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white overflow-hidden">
-                {user?.photoUrl ? (
-                  <img src={user.photoUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <User size={24} />
-                )}
+              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white">
+                <User size={24} />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 truncate max-w-[160px]">
-                  {user?.fullName || 'Rameshnathan Karuvoolan'}
-                </h3>
-                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
-                  {user?.role || 'Developer'}
-                </p>
+                <h3 className="font-bold text-slate-900">Rameshnathan Karuvoolan</h3>
+                <p className="text-xs text-slate-500">Developer</p>
               </div>
             </div>
 
@@ -216,11 +171,6 @@ export default function DeveloperMenu() {
                 )}
               </button>
 
-              <p className="text-[9px] text-slate-400 px-1 leading-tight">
-                <span className="font-bold text-amber-600">Note:</span> If seeding fails with "Permission Denied", make sure you have 
-                <span className="font-bold"> published</span> the updated <span className="italic">firestore.rules</span> in your Firebase Console.
-              </p>
-
               <button
                 onClick={handleMigrate}
                 disabled={isMigrating}
@@ -256,26 +206,6 @@ export default function DeveloperMenu() {
                   />
                 )}
               </button>
-
-              {user && (
-                <button
-                  onClick={handleRefreshProfile}
-                  className="flex items-center gap-3 w-full p-3 bg-slate-50/50 rounded-xl hover:bg-slate-50 transition-all text-slate-600 font-medium"
-                >
-                  <RefreshCcw size={20} />
-                  Refresh Profile
-                </button>
-              )}
-
-              {user && user.role !== 'admin' && (
-                <button
-                  onClick={handlePromoteToAdmin}
-                  className="flex items-center gap-3 w-full p-4 bg-blue-500 text-white rounded-2xl hover:bg-blue-600 transition-all font-bold shadow-lg shadow-blue-200 animate-pulse"
-                >
-                  <ShieldCheck size={20} />
-                  Promote Me to Admin
-                </button>
-              )}
 
               <button
                 onClick={clearFirestoreData}

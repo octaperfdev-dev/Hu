@@ -141,11 +141,7 @@ export default function Login() {
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      if (err.code === 'auth/unauthorized-domain') {
-        setError('This domain is not authorized in Firebase. Please add "hu-sable.vercel.app" to Authorized Domains in Firebase Console.');
-      } else {
-        setError('Failed to sign in with Google. Please try again.');
-      }
+      setError('Failed to sign in with Google. Please try again.');
     } finally {
       setLoading(false);
     }
