@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Code, Github, User, X, Database, RefreshCw, Trash2, ShieldCheck } from 'lucide-react';
-import { seedDatabase, db, doc, updateDoc } from '../firebase';
+import { Code, Github, User, X, Database, RefreshCw, Trash2, ShieldCheck, RefreshCcw } from 'lucide-react';
+import { seedDatabase, db, doc, updateDoc, getDoc } from '../firebase';
 import { migrateMockToFirestore, clearFirestoreData, migrateSqliteToFirestore } from '../lib/migration';
 import { useAuth } from '../App';
 
@@ -50,7 +50,11 @@ export default function DeveloperMenu() {
       alert('Database seeded successfully!');
     } catch (error: any) {
       console.error('Seeding error details:', error);
-      alert(`Error seeding database: ${error.message || 'Unknown error'}. Check console for details.`);
+      let errorMsg = error.message || 'Unknown error';
+      if (error.code === 'permission-denied') {
+        errorMsg = 'Permission Denied. Ensure you are an Admin in Firestore and your email is authorized.';
+      }
+      alert(`Error seeding database: ${errorMsg}. Check console for details.`);
     } finally {
       setIsSeeding(false);
     }
@@ -109,11 +113,26 @@ export default function DeveloperMenu() {
     try {
       const userRef = doc(db, 'users', user.id);
       await updateDoc(userRef, { role: 'admin' });
-      alert('Successfully promoted to Admin! Please refresh the page to see changes.');
-      window.location.reload();
+      alert('Successfully promoted to Admin! Refreshing profile...');
+      await handleRefreshProfile();
     } catch (error: any) {
       console.error('Promotion error:', error);
       alert(`Error promoting to admin: ${error.message}`);
+    }
+  };
+
+  const handleRefreshProfile = async () => {
+    if (!user) return;
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.id));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        localStorage.setItem('user', JSON.stringify({ ...userData, id: user.id }));
+        alert('Profile refreshed! Reloading page...');
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Refresh error:', error);
     }
   };
 
@@ -224,6 +243,16 @@ export default function DeveloperMenu() {
                   />
                 )}
               </button>
+
+              {user && (
+                <button
+                  onClick={handleRefreshProfile}
+                  className="flex items-center gap-3 w-full p-3 bg-slate-50/50 rounded-xl hover:bg-slate-50 transition-all text-slate-600 font-medium"
+                >
+                  <RefreshCcw size={20} />
+                  Refresh Profile
+                </button>
+              )}
 
               {user && user.role !== 'admin' && (
                 <button
