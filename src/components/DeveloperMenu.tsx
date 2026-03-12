@@ -158,12 +158,20 @@ export default function DeveloperMenu() {
             className="fixed bottom-24 right-6 z-50 w-72 bg-white/70 backdrop-blur-xl rounded-3xl p-6 border border-white/40 shadow-2xl"
           >
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white">
-                <User size={24} />
+              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white overflow-hidden">
+                {user?.photoUrl ? (
+                  <img src={user.photoUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={24} />
+                )}
               </div>
               <div>
-                <h3 className="font-bold text-slate-900">Rameshnathan Karuvoolan</h3>
-                <p className="text-xs text-slate-500">Developer</p>
+                <h3 className="font-bold text-slate-900 truncate max-w-[160px]">
+                  {user?.fullName || 'Rameshnathan Karuvoolan'}
+                </h3>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+                  {user?.role || 'Developer'}
+                </p>
               </div>
             </div>
 
@@ -207,6 +215,11 @@ export default function DeveloperMenu() {
                   />
                 )}
               </button>
+
+              <p className="text-[9px] text-slate-400 px-1 leading-tight">
+                <span className="font-bold text-amber-600">Note:</span> If seeding fails with "Permission Denied", make sure you have 
+                <span className="font-bold"> published</span> the updated <span className="italic">firestore.rules</span> in your Firebase Console.
+              </p>
 
               <button
                 onClick={handleMigrate}
@@ -257,7 +270,7 @@ export default function DeveloperMenu() {
               {user && user.role !== 'admin' && (
                 <button
                   onClick={handlePromoteToAdmin}
-                  className="flex items-center gap-3 w-full p-3 bg-blue-50/50 rounded-xl hover:bg-blue-50 transition-all text-blue-600 font-medium"
+                  className="flex items-center gap-3 w-full p-4 bg-blue-500 text-white rounded-2xl hover:bg-blue-600 transition-all font-bold shadow-lg shadow-blue-200 animate-pulse"
                 >
                   <ShieldCheck size={20} />
                   Promote Me to Admin

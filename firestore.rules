@@ -109,8 +109,8 @@ service cloud.firestore {
 
     match /activities/{activityId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
-      allow update: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -121,7 +121,7 @@ service cloud.firestore {
 
     match /queries/{queryId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.studentId) || isTeacherOrAdmin());
-      allow create: if isAuthenticated() && isOwner(request.resource.data.studentId);
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.studentId) || isAdmin());
       allow update: if isTeacherOrAdmin() || (isAuthenticated() && isOwner(resource.data.studentId));
       allow delete: if isAdmin();
     }
@@ -180,14 +180,14 @@ service cloud.firestore {
 
     match /breakfast_reservations/{reservationId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /organic_reservations/{reservationId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
