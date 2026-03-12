@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Code, Github, User, X, Database, RefreshCw, Trash2 } from 'lucide-react';
-import { seedDatabase } from '../firebase';
+import { Code, Github, User, X, Database, RefreshCw, Trash2, ShieldCheck } from 'lucide-react';
+import { seedDatabase, db, doc, updateDoc } from '../firebase';
 import { migrateMockToFirestore, clearFirestoreData, migrateSqliteToFirestore } from '../lib/migration';
+import { useAuth } from '../App';
 
 export default function DeveloperMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,20 +14,30 @@ export default function DeveloperMenu() {
   const [seedProgress, setSeedProgress] = useState(0);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrateProgress, setMigrateProgress] = useState(0);
+  const { user } = useAuth();
   const [isSqliteMigrating, setIsSqliteMigrating] = useState(false);
   const [sqliteProgress, setSqliteProgress] = useState(0);
 
   const isFirebaseConfigured = !!import.meta.env.VITE_FIREBASE_API_KEY;
+  const requiredEnvVars = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID'
+  ];
+  const missingVars = requiredEnvVars.filter(v => !import.meta.env[v]);
 
   const handleSeed = async () => {
     console.log('Seed button clicked. Firebase configured:', isFirebaseConfigured);
     
-    if (!isFirebaseConfigured) {
-      const proceed = confirm('Firebase API Key (VITE_FIREBASE_API_KEY) is not detected in environment. Seeding will likely fail. Do you want to try anyway?');
-      if (!proceed) return;
-    } else {
-      if (!confirm('This will seed the database with initial data. Continue?')) return;
+    if (missingVars.length > 0) {
+      alert(`Missing Firebase environment variables: ${missingVars.join(', ')}. Please add them to your Vercel project settings.`);
+      return;
     }
+
+    if (!confirm('This will seed the database with initial data. Continue?')) return;
 
     setIsSeeding(true);
     setSeedProgress(0);
@@ -46,6 +57,10 @@ export default function DeveloperMenu() {
   };
 
   const handleMigrate = async () => {
+    if (missingVars.length > 0) {
+      alert(`Missing Firebase environment variables: ${missingVars.join(', ')}. Please add them to your Vercel project settings.`);
+      return;
+    }
     if (!confirm('This will migrate data from local storage to Firestore. Continue?')) return;
     setIsMigrating(true);
     setMigrateProgress(0);
@@ -61,6 +76,15 @@ export default function DeveloperMenu() {
   };
 
   const handleSqliteMigrate = async () => {
+    if (missingVars.length > 0) {
+      alert(`Missing Firebase environment variables: ${missingVars.join(', ')}. Please add them to your Vercel project settings.`);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('You must be logged in as an admin to migrate SQLite data. Please log in first.');
+      return;
+    }
     if (!confirm('This will migrate data from SQLite (Server) to Firestore. Continue?')) return;
     setIsSqliteMigrating(true);
     setSqliteProgress(0);
@@ -68,6 +92,28 @@ export default function DeveloperMenu() {
       await migrateSqliteToFirestore((progress) => setSqliteProgress(progress));
     } finally {
       setIsSqliteMigrating(false);
+    }
+  };
+
+  const handlePromoteToAdmin = async () => {
+    if (!user) {
+      alert('Please log in first (e.g., using Google Login).');
+      return;
+    }
+    if (user.role === 'admin') {
+      alert('You are already an admin.');
+      return;
+    }
+    if (!confirm('This will promote your current account to Admin. Continue?')) return;
+    
+    try {
+      const userRef = doc(db, 'users', user.id);
+      await updateDoc(userRef, { role: 'admin' });
+      alert('Successfully promoted to Admin! Please refresh the page to see changes.');
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Promotion error:', error);
+      alert(`Error promoting to admin: ${error.message}`);
     }
   };
 
@@ -110,7 +156,7 @@ export default function DeveloperMenu() {
               <p className="text-[10px] text-slate-400">
                 {isFirebaseConfigured 
                   ? 'Firebase is configured and ready.' 
-                  : 'Firebase configuration missing in Secrets.'}
+                  : `Missing: ${missingVars.join(', ')}`}
               </p>
             </div>
             
@@ -178,6 +224,16 @@ export default function DeveloperMenu() {
                   />
                 )}
               </button>
+
+              {user && user.role !== 'admin' && (
+                <button
+                  onClick={handlePromoteToAdmin}
+                  className="flex items-center gap-3 w-full p-3 bg-blue-50/50 rounded-xl hover:bg-blue-50 transition-all text-blue-600 font-medium"
+                >
+                  <ShieldCheck size={20} />
+                  Promote Me to Admin
+                </button>
+              )}
 
               <button
                 onClick={clearFirestoreData}
