@@ -1,0 +1,314 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application (student, teacher, coach, or admin).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "teacher", "coach", "admin"] },
+        "indexNumber": { "type": "string" },
+        "dob": { "type": "string" },
+        "gender": { "type": "string" },
+        "class": { "type": "string" },
+        "division": { "type": "string" },
+        "assignedClasses": { "type": "string", "description": "JSON array of assigned classes or sports" },
+        "points": { "type": "number" },
+        "address": { "type": "string" },
+        "parentName": { "type": "string" },
+        "parentContact": { "type": "string" },
+        "phone": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "email", "fullName", "role"]
+    },
+    "Classroom": {
+      "title": "Classroom",
+      "description": "A classroom entity.",
+      "type": "object",
+      "properties": {
+        "grade": { "type": "string" },
+        "division": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["grade", "division"]
+    },
+    "HealthRecord": {
+      "title": "Health Record",
+      "description": "A student's health record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "height": { "type": "number" },
+        "weight": { "type": "number" },
+        "bmi": { "type": "number" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "height", "weight", "date"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "A student's activity record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "date": { "type": "string" },
+        "duration": { "type": "number" },
+        "performance": { "type": "string" },
+        "remarks": { "type": "string" },
+        "points": { "type": "number" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "type", "name", "date"]
+    },
+    "Module": {
+      "title": "Module",
+      "description": "Educational module.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "link": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["title"]
+    },
+    "Query": {
+      "title": "Query",
+      "description": "A student query.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "replied"] },
+        "reply": { "type": "string" },
+        "repliedAt": { "type": "timestamp" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["studentId", "subject", "message", "status"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "A teacher announcement.",
+      "type": "object",
+      "properties": {
+        "teacherId": { "type": "string" },
+        "class": { "type": "string" },
+        "division": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["teacherId", "class", "title", "content"]
+    },
+    "Sport": {
+      "title": "Sport",
+      "description": "A sport category.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "StudentSport": {
+      "title": "Student Sport",
+      "description": "A student's enrollment in a sport.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "sportId": { "type": "string" }
+      },
+      "required": ["studentId", "sportId"]
+    },
+    "TrainingSession": {
+      "title": "Training Session",
+      "description": "A sports training session.",
+      "type": "object",
+      "properties": {
+        "sportId": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["sportId", "date"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Attendance record for a training session.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Present", "Absent", "Excused"] }
+      },
+      "required": ["sessionId", "studentId", "status"]
+    },
+    "SportsActivity": {
+      "title": "Sports Activity",
+      "description": "A sports activity record.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "sportId": { "type": "string" },
+        "type": { "type": "string" },
+        "duration": { "type": "number" },
+        "performance": { "type": "string" },
+        "notes": { "type": "string" },
+        "date": { "type": "string" },
+        "points": { "type": "number" }
+      },
+      "required": ["studentId", "sportId", "date"]
+    },
+    "SportsEvent": {
+      "title": "Sports Event",
+      "description": "A sports event.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sportId": { "type": "string" },
+        "date": { "type": "string" },
+        "results": { "type": "string" }
+      },
+      "required": ["name", "sportId", "date"]
+    },
+    "SportsEventParticipant": {
+      "title": "Sports Event Participant",
+      "description": "A participant in a sports event.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "result": { "type": "string" }
+      },
+      "required": ["eventId", "studentId"]
+    },
+    "Vegetable": {
+      "title": "Vegetable",
+      "description": "A vegetable in the marketplace.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "quantity": { "type": "number" },
+        "harvestDate": { "type": "string" },
+        "sellingDay": { "type": "string" },
+        "nutritionBenefits": { "type": "string" },
+        "isOrganic": { "type": "boolean" }
+      },
+      "required": ["name", "price", "quantity"]
+    },
+    "BreakfastItem": {
+      "title": "Breakfast Item",
+      "description": "A breakfast item in the marketplace.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "quantity": { "type": "number" },
+        "sellingDate": { "type": "string" },
+        "category": { "type": "string" },
+        "nutritionInfo": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["name", "price", "quantity", "sellingDate"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "A reservation for a vegetable or breakfast item.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "type": { "type": "string", "enum": ["vegetable", "breakfast"] },
+        "quantity": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["Reserved", "Collected", "Cancelled"] },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "itemId", "type", "quantity", "totalPrice", "status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "classrooms/{classroomId}": {
+      "schema": { "$ref": "#/entities/Classroom" },
+      "description": "Classrooms."
+    },
+    "health_records/{recordId}": {
+      "schema": { "$ref": "#/entities/HealthRecord" },
+      "description": "Health records."
+    },
+    "activities/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "Activities."
+    },
+    "modules/{moduleId}": {
+      "schema": { "$ref": "#/entities/Module" },
+      "description": "Modules."
+    },
+    "queries/{queryId}": {
+      "schema": { "$ref": "#/entities/Query" },
+      "description": "Queries."
+    },
+    "announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Announcements."
+    },
+    "sports/{sportId}": {
+      "schema": { "$ref": "#/entities/Sport" },
+      "description": "Sports."
+    },
+    "student_sports/{studentSportId}": {
+      "schema": { "$ref": "#/entities/StudentSport" },
+      "description": "Student sports enrollments."
+    },
+    "training_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/TrainingSession" },
+      "description": "Training sessions."
+    },
+    "attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/Attendance" },
+      "description": "Attendance records."
+    },
+    "sports_activities/{sportsActivityId}": {
+      "schema": { "$ref": "#/entities/SportsActivity" },
+      "description": "Sports activities."
+    },
+    "sports_events/{eventId}": {
+      "schema": { "$ref": "#/entities/SportsEvent" },
+      "description": "Sports events."
+    },
+    "sports_event_participants/{participantId}": {
+      "schema": { "$ref": "#/entities/SportsEventParticipant" },
+      "description": "Sports event participants."
+    },
+    "vegetables/{vegetableId}": {
+      "schema": { "$ref": "#/entities/Vegetable" },
+      "description": "Vegetables."
+    },
+    "breakfast_items/{itemId}": {
+      "schema": { "$ref": "#/entities/BreakfastItem" },
+      "description": "Breakfast items."
+    },
+    "reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Reservations."
+    }
+  }
+}

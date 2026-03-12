@@ -1,0 +1,7 @@
+{
+  "name": "Remix: JHC Health Guard",
+  "description": "A comprehensive platform for monitoring student health, tracking fitness, and promoting healthy habits with advanced analytics and gamification.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
