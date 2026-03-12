@@ -114,7 +114,7 @@ service cloud.firestore {
     }
 
     match /modules/{moduleId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
@@ -168,12 +168,12 @@ service cloud.firestore {
     }
 
     match /vegetables/{vegetableId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update, delete: if isAdmin() || isOrganicAdmin();
     }
 
     match /breakfast_items/{itemId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update, delete: if isAdmin() || isBreakfastAdmin();
     }
 
@@ -192,7 +192,7 @@ service cloud.firestore {
     }
 
     match /home_page_data/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
   }

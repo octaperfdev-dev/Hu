@@ -111,7 +111,24 @@ export async function seedDatabase(onProgress?: (progress: number) => void) {
   }
 
   const { mockDb } = await import('./lib/mockDb');
-  const collections = ['users', 'healthRecords', 'activities', 'queries', 'announcements', 'reservations', 'breakfastReservations', 'marketplaceItems'];
+  const collections = [
+    'users', 
+    'health_records', 
+    'activities', 
+    'queries', 
+    'announcements', 
+    'organic_reservations', 
+    'breakfast_reservations', 
+    'modules',
+    'breakfast_items',
+    'vegetables',
+    'classrooms',
+    'sports',
+    'attendance',
+    'badges',
+    'likes',
+    'comments'
+  ];
   
   let totalItems = 0;
   for (const colName of collections) {

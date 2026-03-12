@@ -7,13 +7,21 @@ export async function migrateMockToFirestore(onProgress?: (progress: number) => 
   
   const collections = [
     'users',
-    'healthRecords',
+    'health_records',
     'activities',
     'queries',
     'announcements',
-    'reservations',
-    'breakfastReservations',
-    'marketplaceItems'
+    'organic_reservations',
+    'breakfast_reservations',
+    'modules',
+    'breakfast_items',
+    'vegetables',
+    'classrooms',
+    'sports',
+    'attendance',
+    'badges',
+    'likes',
+    'comments'
   ];
 
   let totalItems = 0;
@@ -56,13 +64,21 @@ export async function clearFirestoreData() {
   
   const collections = [
     'users',
-    'healthRecords',
+    'health_records',
     'activities',
     'queries',
     'announcements',
-    'reservations',
-    'breakfastReservations',
-    'marketplaceItems'
+    'organic_reservations',
+    'breakfast_reservations',
+    'modules',
+    'breakfast_items',
+    'vegetables',
+    'classrooms',
+    'sports',
+    'attendance',
+    'badges',
+    'likes',
+    'comments'
   ];
 
   for (const colName of collections) {
@@ -97,13 +113,13 @@ export async function migrateSqliteToFirestore(onProgress?: (progress: number) =
     // Mapping SQLite tables to Firestore collections
     const tableMap: any = {
       'users': 'users',
-      'health_records': 'healthRecords',
+      'health_records': 'health_records',
       'activities': 'activities',
       'queries': 'queries',
       'announcements': 'announcements',
       'vegetables': 'vegetables',
-      'breakfast_items': 'breakfastItems',
-      'breakfast_reservations': 'breakfastReservations'
+      'breakfast_items': 'breakfast_items',
+      'breakfast_reservations': 'breakfast_reservations'
     };
 
     let totalItems = 0;
