@@ -61,17 +61,28 @@ class MockDb {
   private data: DbSchema;
 
   constructor() {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      this.data = JSON.parse(stored);
-    } else {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      if (stored) {
+        this.data = JSON.parse(stored);
+      } else {
+        this.data = initialData;
+        this.save();
+      }
+    } catch (e) {
+      console.error("Failed to initialize MockDb from localStorage:", e);
       this.data = initialData;
-      this.save();
     }
   }
 
   private save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      }
+    } catch (e) {
+      console.error("Failed to save MockDb to localStorage:", e);
+    }
   }
 
   getCollection(name: keyof DbSchema) {
@@ -113,9 +124,13 @@ class MockAuth {
   private listeners: ((user: any) => void)[] = [];
 
   constructor() {
-    const stored = localStorage.getItem('auth_user');
-    if (stored) {
-      this.currentUser = JSON.parse(stored);
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('auth_user') : null;
+      if (stored) {
+        this.currentUser = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Failed to initialize MockAuth from localStorage:", e);
     }
   }
 
@@ -131,7 +146,13 @@ class MockAuth {
     const user = mockDb.getCollection('users').find((u: any) => u.username === username);
     if (user) {
       this.currentUser = { ...user, uid: user.id };
-      localStorage.setItem('auth_user', JSON.stringify(this.currentUser));
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('auth_user', JSON.stringify(this.currentUser));
+        }
+      } catch (e) {
+        console.error("Failed to save auth_user to localStorage:", e);
+      }
       this.notify();
       return this.currentUser;
     }
@@ -140,7 +161,13 @@ class MockAuth {
 
   async signOut() {
     this.currentUser = null;
-    localStorage.removeItem('auth_user');
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('auth_user');
+      }
+    } catch (e) {
+      console.error("Failed to remove auth_user from localStorage:", e);
+    }
     this.notify();
   }
 

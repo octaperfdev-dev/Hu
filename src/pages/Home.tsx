@@ -736,7 +736,7 @@ export default function Home() {
                 <Users size={16} className="text-slate-400" />
               </div>
               <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer">
-                <GlobeIcon size={16} className="text-slate-400" />
+                <Globe size={16} className="text-slate-400" />
               </div>
               <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer">
                 <ShieldCheck size={16} className="text-slate-400" />

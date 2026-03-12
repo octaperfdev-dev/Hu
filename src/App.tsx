@@ -328,13 +328,24 @@ const Layout = () => {
 
 const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(() => {
-    const cached = localStorage.getItem('user');
-    return cached ? JSON.parse(cached) : null;
+    try {
+      const cached = localStorage.getItem('user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      console.error("Failed to parse cached user:", e);
+      return null;
+    }
   });
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      setIsAuthReady(true);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {

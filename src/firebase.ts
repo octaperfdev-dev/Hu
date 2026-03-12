@@ -39,10 +39,22 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+let app;
+let auth: any;
+let db: any;
+let storage: any;
+
+try {
+  if (!firebaseConfig.apiKey) {
+    console.warn("Firebase API Key is missing. Check your environment variables.");
+  }
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+} catch (error) {
+  console.error("Firebase initialization failed:", error);
+}
 
 export {
   auth,
