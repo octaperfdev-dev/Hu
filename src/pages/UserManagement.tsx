@@ -130,47 +130,48 @@ export default function UserManagement() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const data = event.target?.result;
-      let usersToImport: any[] = [];
+      
+      const processUsers = async (usersToImport: any[]) => {
+        for (const row of usersToImport) {
+          if (row.username && row.fullName && row.password) {
+            try {
+              const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
+              const tempAuth = getAuth(tempApp);
+              
+              const normalizedUsername = row.username.toLowerCase().trim();
+              const systemEmail = `${normalizedUsername}@school.internal`;
+              const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+              
+              await setDoc(doc(db, 'users', userCredential.user.uid), {
+                email: row.email || '',
+                username: normalizedUsername,
+                systemEmail: systemEmail,
+                fullName: row.fullName,
+                role: row.role || 'student',
+                passwordChanged: false,
+                profileCompleted: false,
+                createdAt: new Date().toISOString()
+              });
+              
+              await deleteApp(tempApp);
+            } catch (err) {
+              console.error('Error importing user:', err);
+            }
+          }
+        }
+        setToast({ message: 'Import completed', type: 'success' });
+      };
 
       if (file.name.endsWith('.csv')) {
         Papa.parse(data as string, {
           header: true,
-          complete: (results) => { usersToImport = results.data; }
+          complete: (results) => { processUsers(results.data); }
         });
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
-        usersToImport = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        processUsers(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
       }
-
-      for (const row of usersToImport) {
-        if (row.username && row.fullName && row.password) {
-          try {
-            const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
-            const tempAuth = getAuth(tempApp);
-            
-            const normalizedUsername = row.username.toLowerCase().trim();
-            const systemEmail = `${normalizedUsername}@school.internal`;
-            const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-            
-            await setDoc(doc(db, 'users', userCredential.user.uid), {
-              email: row.email || '',
-              username: normalizedUsername,
-              systemEmail: systemEmail,
-              fullName: row.fullName,
-              role: row.role || 'student',
-              passwordChanged: false,
-              profileCompleted: false,
-              createdAt: new Date().toISOString()
-            });
-            
-            await deleteApp(tempApp);
-          } catch (err) {
-            console.error('Error importing user:', err);
-          }
-        }
-      }
-      setToast({ message: 'Import completed', type: 'success' });
     };
     
     if (file.name.endsWith('.csv')) reader.readAsText(file);

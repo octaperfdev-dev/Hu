@@ -187,11 +187,22 @@ export default function Students() {
   };
 
   const handleExportCSV = () => {
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Assuming YYYY-MM-DD format from database
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateStr.split('-');
+        return `${day}.${month}.${year}`;
+      }
+      return dateStr;
+    };
+
     const dataToExport = students.map(s => ({
       username: s.username,
       fullName: s.fullName,
       email: s.email,
       indexNumber: s.indexNumber,
+      dob: formatDate(s.dob || ''),
       class: s.class,
       division: s.division,
       password: '' // Blank password for template
@@ -208,55 +219,67 @@ export default function Students() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const parseDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Check for DD.MM.YYYY format
+      if (dateStr.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
+        const [day, month, year] = dateStr.split('.');
+        return `${year}-${month}-${day}`; // Convert to YYYY-MM-DD
+      }
+      return dateStr; // Assume it's already YYYY-MM-DD or something else
+    };
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       const data = event.target?.result;
-      let studentsToImport: any[] = [];
+      
+      const processStudents = async (studentsToImport: any[]) => {
+        for (const row of studentsToImport) {
+          if (row.username && row.fullName && row.password) {
+            try {
+              const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
+              const tempAuth = getAuth(tempApp);
+              
+              const normalizedUsername = row.username.toLowerCase().trim();
+              const systemEmail = `${normalizedUsername}@school.internal`;
+              const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+              
+              await setDoc(doc(db, 'users', userCredential.user.uid), {
+                email: row.email || '',
+                username: normalizedUsername,
+                systemEmail: systemEmail,
+                fullName: row.fullName,
+                indexNumber: row.indexNumber || '',
+                dob: parseDate(row.dob || ''),
+                class: row.class || '',
+                division: row.division || '',
+                role: 'student',
+                passwordChanged: false,
+                profileCompleted: false,
+                points: 0,
+                createdAt: new Date().toISOString()
+              });
+              
+              await deleteApp(tempApp);
+            } catch (err) {
+              console.error('Error importing student:', err);
+            }
+          }
+        }
+        fetchStudents();
+        setToast({ message: 'Import completed', type: 'success' });
+      };
 
       if (file.name.endsWith('.csv')) {
         Papa.parse(data as string, {
           header: true,
-          complete: (results) => { studentsToImport = results.data; }
+          complete: (results) => { processStudents(results.data); }
         });
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
-        studentsToImport = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        processStudents(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
       }
-
-      for (const row of studentsToImport) {
-        if (row.username && row.fullName && row.password) {
-          try {
-            const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
-            const tempAuth = getAuth(tempApp);
-            
-            const normalizedUsername = row.username.toLowerCase().trim();
-            const systemEmail = `${normalizedUsername}@school.internal`;
-            const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-            
-            await setDoc(doc(db, 'users', userCredential.user.uid), {
-              email: row.email || '',
-              username: normalizedUsername,
-              systemEmail: systemEmail,
-              fullName: row.fullName,
-              indexNumber: row.indexNumber || '',
-              class: row.class || '',
-              division: row.division || '',
-              role: 'student',
-              passwordChanged: false,
-              profileCompleted: false,
-              points: 0,
-              createdAt: new Date().toISOString()
-            });
-            
-            await deleteApp(tempApp);
-          } catch (err) {
-            console.error('Error importing student:', err);
-          }
-        }
-      }
-      fetchStudents();
-      setToast({ message: 'Import completed', type: 'success' });
     };
     
     if (file.name.endsWith('.csv')) reader.readAsText(file);
