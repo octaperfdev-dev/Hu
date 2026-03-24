@@ -280,71 +280,79 @@ export default function Students() {
     let added = 0;
     let errors = 0;
 
-    // Use Firestore batches for high performance (500 docs per batch)
-    const batchSize = 500;
-    for (let i = 0; i < validRows.length; i += batchSize) {
-      const batch = writeBatch(db);
-      const currentBatchRows = validRows.slice(i, i + batchSize);
+    try {
+      // Pre-fetch existing students to avoid 6000+ individual queries
+      const existingSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      const existingIndexNumbers = new Set(existingSnapshot.docs.map(d => d.data().indexNumber));
+      const existingUsernames = new Set(existingSnapshot.docs.map(d => d.data().username?.toLowerCase()));
 
-      for (const row of currentBatchRows) {
-        try {
-          const normalizedUsername = row.username.toLowerCase().trim();
-          const systemEmail = `${normalizedUsername}@school.internal`;
+      // Use Firestore batches for high performance (500 docs per batch)
+      const batchSize = 500;
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const currentBatchRows = validRows.slice(i, i + batchSize);
+        let batchCount = 0;
 
-          // Check for duplicate indexNumber or username in main database
-          // Note: In a high-performance batch, we ideally check duplicates beforehand or handle them.
-          // For 3000 records, we'll do a quick check.
-          const qIndex = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
-          const qUsername = query(collection(db, 'users'), where('username', '==', normalizedUsername));
-          
-          const [indexSnapshot, usernameSnapshot] = await Promise.all([
-            getDocs(qIndex),
-            getDocs(qUsername)
-          ]);
-          
-          if (!indexSnapshot.empty || !usernameSnapshot.empty) {
-            console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
-            skipped++;
-            continue;
+        for (const row of currentBatchRows) {
+          try {
+            const normalizedUsername = row.username.toLowerCase().trim();
+            const systemEmail = `${normalizedUsername}@school.internal`;
+
+            // Local duplicate check (O(1) with Sets)
+            if (existingIndexNumbers.has(row.indexNumber) || existingUsernames.has(normalizedUsername)) {
+              console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
+              skipped++;
+              completed++;
+              continue;
+            }
+
+            const userRef = doc(collection(db, 'users'));
+            batch.set(userRef, {
+              email: row.email || '',
+              username: normalizedUsername,
+              systemEmail: systemEmail,
+              fullName: row.fullName,
+              indexNumber: row.indexNumber || '',
+              dob: parseDate(row.dob || ''),
+              class: row.class || '',
+              division: row.division || '',
+              role: 'student',
+              passwordChanged: false,
+              profileCompleted: false,
+              points: 0,
+              authCreated: false,
+              tempPassword: row.password,
+              createdAt: new Date().toISOString()
+            });
+            
+            // Add to local sets to prevent duplicates within the same import file
+            existingIndexNumbers.add(row.indexNumber);
+            existingUsernames.add(normalizedUsername);
+            
+            added++;
+            batchCount++;
+          } catch (err) {
+            console.error('Error preparing student for batch:', err);
+            errors++;
           }
+          
+          completed++;
+          // Update progress even for skipped rows
+          if (completed % 10 === 0) {
+            setImportProgress(Math.round((completed / total) * 100));
+          }
+        }
 
-          // Generate a unique ID for the user document
-          // Since we aren't creating the Auth account yet, we generate a random ID
-          const userRef = doc(collection(db, 'users'));
-          
-          batch.set(userRef, {
-            email: row.email || '',
-            username: normalizedUsername,
-            systemEmail: systemEmail,
-            fullName: row.fullName,
-            indexNumber: row.indexNumber || '',
-            dob: parseDate(row.dob || ''),
-            class: row.class || '',
-            division: row.division || '',
-            role: 'student',
-            passwordChanged: false,
-            profileCompleted: false,
-            points: 0,
-            authCreated: false, // Flag for Lazy Auth
-            tempPassword: row.password, // Store temporarily for first login
-            createdAt: new Date().toISOString()
-          });
-          
-          added++;
-        } catch (err) {
-          console.error('Error preparing student for batch:', err);
-          errors++;
+        if (batchCount > 0) {
+          await batch.commit();
         }
       }
-
-      try {
-        await batch.commit();
-        completed += currentBatchRows.length;
-        setImportProgress(Math.round((completed / total) * 100));
-      } catch (batchErr) {
-        console.error('Error committing batch:', batchErr);
-        errors += currentBatchRows.length;
-      }
+      
+      // Final progress update
+      setImportProgress(100);
+    } catch (err) {
+      console.error('Bulk import failed:', err);
+      setToast({ message: 'Bulk import failed. Please try again.', type: 'error' });
     }
     
     setIsImporting(false);

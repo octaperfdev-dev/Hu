@@ -155,54 +155,66 @@ export default function AdminTeachers() {
     let added = 0;
     let errors = 0;
 
-    // Use Firestore batches for high performance
-    const batchSize = 500;
-    for (let i = 0; i < validRows.length; i += batchSize) {
-      const batch = writeBatch(db);
-      const currentBatchRows = validRows.slice(i, i + batchSize);
+    try {
+      // Pre-fetch existing teachers
+      const existingSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
+      const existingEmails = new Set(existingSnapshot.docs.map(d => d.data().email?.toLowerCase()));
 
-      for (const row of currentBatchRows) {
-        try {
-          // Check for duplicate email
-          const q = query(collection(db, 'users'), where('email', '==', row.email));
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            console.log(`Skipping duplicate teacher with email: ${row.email}`);
-            skipped++;
-            continue;
+      // Use Firestore batches for high performance
+      const batchSize = 500;
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const currentBatchRows = validRows.slice(i, i + batchSize);
+        let batchCount = 0;
+
+        for (const row of currentBatchRows) {
+          try {
+            const normalizedEmail = row.email.toLowerCase().trim();
+            // Check for duplicate email
+            if (existingEmails.has(normalizedEmail)) {
+              console.log(`Skipping duplicate teacher with email: ${normalizedEmail}`);
+              skipped++;
+              completed++;
+              continue;
+            }
+
+            const userRef = doc(collection(db, 'users'));
+            
+            batch.set(userRef, {
+              fullName: row.fullName,
+              email: normalizedEmail,
+              class: row.class || '',
+              division: row.division || '',
+              phone: row.phone || '',
+              indexNumber: row.indexNumber || '',
+              role: 'teacher',
+              authCreated: false,
+              tempPassword: row.password,
+              createdAt: new Date().toISOString()
+            });
+            
+            existingEmails.add(normalizedEmail);
+            added++;
+            batchCount++;
+          } catch (err) {
+            console.error('Error preparing teacher for batch:', err);
+            errors++;
           }
+          
+          completed++;
+          if (completed % 10 === 0) {
+            setImportProgress(Math.round((completed / total) * 100));
+          }
+        }
 
-          const userRef = doc(collection(db, 'users'));
-          
-          batch.set(userRef, {
-            fullName: row.fullName,
-            email: row.email,
-            class: row.class || '',
-            division: row.division || '',
-            phone: row.phone || '',
-            indexNumber: row.indexNumber || '',
-            role: 'teacher',
-            authCreated: false,
-            tempPassword: row.password,
-            createdAt: new Date().toISOString()
-          });
-          
-          added++;
-        } catch (err) {
-          console.error('Error preparing teacher for batch:', err);
-          errors++;
+        if (batchCount > 0) {
+          await batch.commit();
         }
       }
-
-      try {
-        await batch.commit();
-        completed += currentBatchRows.length;
-        setImportProgress(Math.round((completed / total) * 100));
-      } catch (batchErr) {
-        console.error('Error committing batch:', batchErr);
-        errors += currentBatchRows.length;
-      }
+      setImportProgress(100);
+    } catch (err) {
+      console.error('Bulk import failed:', err);
+      setToast({ message: 'Bulk import failed. Please try again.', type: 'error' });
     }
     
     setIsImporting(false);

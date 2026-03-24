@@ -171,56 +171,67 @@ export default function UserManagement() {
     let added = 0;
     let errors = 0;
 
-    // Use Firestore batches for high performance
-    const batchSize = 500;
-    for (let i = 0; i < validRows.length; i += batchSize) {
-      const batch = writeBatch(db);
-      const currentBatchRows = validRows.slice(i, i + batchSize);
+    try {
+      // Pre-fetch existing users
+      const existingSnapshot = await getDocs(collection(db, 'users'));
+      const existingUsernames = new Set(existingSnapshot.docs.map(d => d.data().username?.toLowerCase()));
 
-      for (const row of currentBatchRows) {
-        try {
-          const normalizedUsername = row.username.toLowerCase().trim();
-          // Check for duplicate username
-          const q = query(collection(db, 'users'), where('username', '==', normalizedUsername));
-          const querySnapshot = await getDocs(q);
-          
-          if (!querySnapshot.empty) {
-            console.log(`Skipping duplicate user with username: ${normalizedUsername}`);
-            skipped++;
-            continue;
+      // Use Firestore batches for high performance
+      const batchSize = 500;
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const currentBatchRows = validRows.slice(i, i + batchSize);
+        let batchCount = 0;
+
+        for (const row of currentBatchRows) {
+          try {
+            const normalizedUsername = row.username.toLowerCase().trim();
+            // Check for duplicate username
+            if (existingUsernames.has(normalizedUsername)) {
+              console.log(`Skipping duplicate user with username: ${normalizedUsername}`);
+              skipped++;
+              completed++;
+              continue;
+            }
+
+            const userRef = doc(collection(db, 'users'));
+            const systemEmail = `${normalizedUsername}@school.internal`;
+            
+            batch.set(userRef, {
+              email: row.email || '',
+              username: normalizedUsername,
+              systemEmail: systemEmail,
+              fullName: row.fullName,
+              role: row.role || 'student',
+              authCreated: false,
+              tempPassword: row.password,
+              passwordChanged: false,
+              profileCompleted: false,
+              createdAt: new Date().toISOString()
+            });
+            
+            existingUsernames.add(normalizedUsername);
+            added++;
+            batchCount++;
+          } catch (err) {
+            console.error('Error preparing user for batch:', err);
+            errors++;
           }
+          
+          completed++;
+          if (completed % 10 === 0) {
+            setImportProgress(Math.round((completed / total) * 100));
+          }
+        }
 
-          const userRef = doc(collection(db, 'users'));
-          const systemEmail = `${normalizedUsername}@school.internal`;
-          
-          batch.set(userRef, {
-            email: row.email || '',
-            username: normalizedUsername,
-            systemEmail: systemEmail,
-            fullName: row.fullName,
-            role: row.role || 'student',
-            authCreated: false,
-            tempPassword: row.password,
-            passwordChanged: false,
-            profileCompleted: false,
-            createdAt: new Date().toISOString()
-          });
-          
-          added++;
-        } catch (err) {
-          console.error('Error preparing user for batch:', err);
-          errors++;
+        if (batchCount > 0) {
+          await batch.commit();
         }
       }
-
-      try {
-        await batch.commit();
-        completed += currentBatchRows.length;
-        setImportProgress(Math.round((completed / total) * 100));
-      } catch (batchErr) {
-        console.error('Error committing batch:', batchErr);
-        errors += currentBatchRows.length;
-      }
+      setImportProgress(100);
+    } catch (err) {
+      console.error('Bulk import failed:', err);
+      setToast({ message: 'Bulk import failed. Please try again.', type: 'error' });
     }
     
     setIsImporting(false);
