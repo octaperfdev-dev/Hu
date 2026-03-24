@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut } from '../firebase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { Plus, Search, Edit2, Trash2, UserPlus, FileDown, FileUp, X } from 'lucide-react';
@@ -155,6 +155,11 @@ export default function AdminTeachers() {
     let added = 0;
     let errors = 0;
 
+    // Create a single temporary app for the entire import session
+    const tempAppName = 'bulk-import-teachers-' + Date.now();
+    const tempApp = initializeApp(firebaseConfig as any, tempAppName);
+    const tempAuth = getAuth(tempApp);
+
     for (const row of validRows) {
       try {
         // Check for duplicate email
@@ -169,9 +174,6 @@ export default function AdminTeachers() {
           continue;
         }
 
-        const tempApp = initializeApp(firebaseConfig as any, 'temp-import-teacher-' + Date.now());
-        const tempAuth = getAuth(tempApp);
-        
         try {
           const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
           
@@ -186,13 +188,15 @@ export default function AdminTeachers() {
             createdAt: new Date().toISOString()
           });
           
+          await signOut(tempAuth);
           added++;
         } catch (authErr: any) {
-          console.error('Auth/Firestore error for teacher:', row.email, authErr);
+          console.error(`Error importing teacher ${row.email}:`, authErr.message);
           errors++;
-        } finally {
-          await deleteApp(tempApp);
         }
+        
+        // Small delay to avoid hitting rate limits too fast
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (err) {
         console.error('General error importing teacher:', err);
         errors++;
@@ -200,6 +204,9 @@ export default function AdminTeachers() {
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
     }
+    
+    // Cleanup the temporary app
+    await deleteApp(tempApp);
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);

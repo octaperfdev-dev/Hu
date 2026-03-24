@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot, updateDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot, updateDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut } from '../firebase';
 import { Search, Plus, Trash2, FileDown, FileUp, X, UserPlus, Edit2 } from 'lucide-react';
 import { useAuth } from '../App';
 import Papa from 'papaparse';
@@ -171,6 +171,11 @@ export default function UserManagement() {
     let added = 0;
     let errors = 0;
 
+    // Create a single temporary app for the entire import session
+    const tempAppName = 'bulk-import-users-' + Date.now();
+    const tempApp = initializeApp(firebaseConfig as any, tempAppName);
+    const tempAuth = getAuth(tempApp);
+
     for (const row of validRows) {
       try {
         const normalizedUsername = row.username.toLowerCase().trim();
@@ -186,9 +191,6 @@ export default function UserManagement() {
           continue;
         }
 
-        const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
-        const tempAuth = getAuth(tempApp);
-        
         try {
           const systemEmail = `${normalizedUsername}@school.internal`;
           const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
@@ -204,13 +206,15 @@ export default function UserManagement() {
             createdAt: new Date().toISOString()
           });
           
+          await signOut(tempAuth);
           added++;
         } catch (authErr: any) {
-          console.error('Auth/Firestore error for user:', normalizedUsername, authErr);
+          console.error(`Error importing user ${normalizedUsername}:`, authErr.message);
           errors++;
-        } finally {
-          await deleteApp(tempApp);
         }
+        
+        // Small delay to avoid hitting rate limits too fast
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (err) {
         console.error('General error importing user:', err);
         errors++;
@@ -218,6 +222,9 @@ export default function UserManagement() {
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
     }
+    
+    // Cleanup the temporary app
+    await deleteApp(tempApp);
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut } from '../firebase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { 
@@ -280,12 +280,17 @@ export default function Students() {
     let added = 0;
     let errors = 0;
 
+    // Create a single temporary app for the entire import session
+    const tempAppName = 'bulk-import-students-' + Date.now();
+    const tempApp = initializeApp(firebaseConfig as any, tempAppName);
+    const tempAuth = getAuth(tempApp);
+
     for (const row of validRows) {
       try {
         const normalizedUsername = row.username.toLowerCase().trim();
         const systemEmail = `${normalizedUsername}@school.internal`;
 
-        // Check for duplicate indexNumber or username
+        // Check for duplicate indexNumber or username in main database
         const qIndex = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
         const qUsername = query(collection(db, 'users'), where('username', '==', normalizedUsername));
         
@@ -302,12 +307,11 @@ export default function Students() {
           continue;
         }
 
-        const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
-        const tempAuth = getAuth(tempApp);
-        
         try {
+          // Create user in Auth
           const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
           
+          // Save to Firestore
           await setDoc(doc(db, 'users', userCredential.user.uid), {
             email: row.email || '',
             username: normalizedUsername,
@@ -324,13 +328,16 @@ export default function Students() {
             createdAt: new Date().toISOString()
           });
           
+          // Sign out from temp auth to avoid session conflicts
+          await signOut(tempAuth);
           added++;
         } catch (authErr: any) {
-          console.error('Auth/Firestore error for student:', row.username, authErr);
+          console.error(`Error importing student ${row.username}:`, authErr.message);
           errors++;
-        } finally {
-          await deleteApp(tempApp);
         }
+        
+        // Small delay to avoid hitting rate limits too fast
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (err) {
         console.error('General error importing student:', err);
         errors++;
@@ -338,6 +345,9 @@ export default function Students() {
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
     }
+    
+    // Cleanup the temporary app
+    await deleteApp(tempApp);
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
