@@ -168,6 +168,8 @@ export default function UserManagement() {
     const total = validRows.length;
     let completed = 0;
     let skipped = 0;
+    let added = 0;
+    let errors = 0;
 
     for (const row of validRows) {
       try {
@@ -187,23 +189,31 @@ export default function UserManagement() {
         const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
         const tempAuth = getAuth(tempApp);
         
-        const systemEmail = `${normalizedUsername}@school.internal`;
-        const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-        
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: row.email || '',
-          username: normalizedUsername,
-          systemEmail: systemEmail,
-          fullName: row.fullName,
-          role: row.role || 'student',
-          passwordChanged: false,
-          profileCompleted: false,
-          createdAt: new Date().toISOString()
-        });
-        
-        await deleteApp(tempApp);
+        try {
+          const systemEmail = `${normalizedUsername}@school.internal`;
+          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+          
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            email: row.email || '',
+            username: normalizedUsername,
+            systemEmail: systemEmail,
+            fullName: row.fullName,
+            role: row.role || 'student',
+            passwordChanged: false,
+            profileCompleted: false,
+            createdAt: new Date().toISOString()
+          });
+          
+          added++;
+        } catch (authErr: any) {
+          console.error('Auth/Firestore error for user:', normalizedUsername, authErr);
+          errors++;
+        } finally {
+          await deleteApp(tempApp);
+        }
       } catch (err) {
-        console.error('Error importing user:', err);
+        console.error('General error importing user:', err);
+        errors++;
       }
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
@@ -211,10 +221,12 @@ export default function UserManagement() {
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
-    const message = skipped > 0 
-      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
-      : 'Import completed successfully.';
-    setToast({ message, type: 'success' });
+    
+    let message = `Import finished. ${added} added.`;
+    if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
+    if (errors > 0) message += ` ${errors} failed (errors).`;
+    
+    setToast({ message, type: errors > 0 ? 'error' : 'success' });
   };
 
   return (

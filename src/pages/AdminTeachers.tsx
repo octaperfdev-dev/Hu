@@ -152,6 +152,8 @@ export default function AdminTeachers() {
     const total = validRows.length;
     let completed = 0;
     let skipped = 0;
+    let added = 0;
+    let errors = 0;
 
     for (const row of validRows) {
       try {
@@ -170,22 +172,30 @@ export default function AdminTeachers() {
         const tempApp = initializeApp(firebaseConfig as any, 'temp-import-teacher-' + Date.now());
         const tempAuth = getAuth(tempApp);
         
-        const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
-        
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          fullName: row.fullName,
-          email: row.email,
-          class: row.class || '',
-          division: row.division || '',
-          phone: row.phone || '',
-          indexNumber: row.indexNumber || '',
-          role: 'teacher',
-          createdAt: new Date().toISOString()
-        });
-        
-        await deleteApp(tempApp);
+        try {
+          const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
+          
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            fullName: row.fullName,
+            email: row.email,
+            class: row.class || '',
+            division: row.division || '',
+            phone: row.phone || '',
+            indexNumber: row.indexNumber || '',
+            role: 'teacher',
+            createdAt: new Date().toISOString()
+          });
+          
+          added++;
+        } catch (authErr: any) {
+          console.error('Auth/Firestore error for teacher:', row.email, authErr);
+          errors++;
+        } finally {
+          await deleteApp(tempApp);
+        }
       } catch (err) {
-        console.error('Error importing teacher:', err);
+        console.error('General error importing teacher:', err);
+        errors++;
       }
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
@@ -194,10 +204,12 @@ export default function AdminTeachers() {
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchTeachers();
-    const message = skipped > 0 
-      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
-      : 'Import completed successfully.';
-    setToast({ message, type: 'success' });
+    
+    let message = `Import finished. ${added} added.`;
+    if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
+    if (errors > 0) message += ` ${errors} failed (errors).`;
+    
+    setToast({ message, type: errors > 0 ? 'error' : 'success' });
   };
 
   const handleDelete = async (id: string) => {

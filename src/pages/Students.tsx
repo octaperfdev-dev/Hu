@@ -277,15 +277,25 @@ export default function Students() {
     const total = validRows.length;
     let completed = 0;
     let skipped = 0;
+    let added = 0;
+    let errors = 0;
 
     for (const row of validRows) {
       try {
-        // Check for duplicate indexNumber
-        const q = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
-        const querySnapshot = await getDocs(q);
+        const normalizedUsername = row.username.toLowerCase().trim();
+        const systemEmail = `${normalizedUsername}@school.internal`;
+
+        // Check for duplicate indexNumber or username
+        const qIndex = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
+        const qUsername = query(collection(db, 'users'), where('username', '==', normalizedUsername));
         
-        if (!querySnapshot.empty) {
-          console.log(`Skipping duplicate student with index: ${row.indexNumber}`);
+        const [indexSnapshot, usernameSnapshot] = await Promise.all([
+          getDocs(qIndex),
+          getDocs(qUsername)
+        ]);
+        
+        if (!indexSnapshot.empty || !usernameSnapshot.empty) {
+          console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
           skipped++;
           completed++;
           setImportProgress(Math.round((completed / total) * 100));
@@ -295,29 +305,35 @@ export default function Students() {
         const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
         const tempAuth = getAuth(tempApp);
         
-        const normalizedUsername = row.username.toLowerCase().trim();
-        const systemEmail = `${normalizedUsername}@school.internal`;
-        const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-        
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: row.email || '',
-          username: normalizedUsername,
-          systemEmail: systemEmail,
-          fullName: row.fullName,
-          indexNumber: row.indexNumber || '',
-          dob: parseDate(row.dob || ''),
-          class: row.class || '',
-          division: row.division || '',
-          role: 'student',
-          passwordChanged: false,
-          profileCompleted: false,
-          points: 0,
-          createdAt: new Date().toISOString()
-        });
-        
-        await deleteApp(tempApp);
+        try {
+          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+          
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            email: row.email || '',
+            username: normalizedUsername,
+            systemEmail: systemEmail,
+            fullName: row.fullName,
+            indexNumber: row.indexNumber || '',
+            dob: parseDate(row.dob || ''),
+            class: row.class || '',
+            division: row.division || '',
+            role: 'student',
+            passwordChanged: false,
+            profileCompleted: false,
+            points: 0,
+            createdAt: new Date().toISOString()
+          });
+          
+          added++;
+        } catch (authErr: any) {
+          console.error('Auth/Firestore error for student:', row.username, authErr);
+          errors++;
+        } finally {
+          await deleteApp(tempApp);
+        }
       } catch (err) {
-        console.error('Error importing student:', err);
+        console.error('General error importing student:', err);
+        errors++;
       }
       completed++;
       setImportProgress(Math.round((completed / total) * 100));
@@ -326,10 +342,12 @@ export default function Students() {
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchStudents();
-    const message = skipped > 0 
-      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
-      : 'Import completed successfully.';
-    setToast({ message, type: 'success' });
+    
+    let message = `Import finished. ${added} added.`;
+    if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
+    if (errors > 0) message += ` ${errors} failed (errors).`;
+    
+    setToast({ message, type: errors > 0 ? 'error' : 'success' });
   };
 
   const handleDelete = async (id: string) => {
