@@ -147,41 +147,57 @@ export default function AdminTeachers() {
 
   const handleConfirmImport = async () => {
     setIsImporting(true);
-    const total = importPreviewData.filter(row => row.email && row.fullName && row.password).length;
+    // Filter valid rows first
+    const validRows = importPreviewData.filter(row => row.email && row.fullName && row.password);
+    const total = validRows.length;
     let completed = 0;
+    let skipped = 0;
 
-    for (const row of importPreviewData) {
-      if (row.email && row.fullName && row.password) {
-        try {
-          const tempApp = initializeApp(firebaseConfig as any, 'temp-import-teacher-' + Date.now());
-          const tempAuth = getAuth(tempApp);
-          
-          const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
-          
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            fullName: row.fullName,
-            email: row.email,
-            class: row.class || '',
-            division: row.division || '',
-            phone: row.phone || '',
-            indexNumber: row.indexNumber || '',
-            role: 'teacher',
-            createdAt: new Date().toISOString()
-          });
-          
-          await deleteApp(tempApp);
-        } catch (err) {
-          console.error('Error importing teacher:', err);
+    for (const row of validRows) {
+      try {
+        // Check for duplicate email
+        const q = query(collection(db, 'users'), where('email', '==', row.email));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          console.log(`Skipping duplicate teacher with email: ${row.email}`);
+          skipped++;
+          completed++;
+          setImportProgress(Math.round((completed / total) * 100));
+          continue;
         }
-        completed++;
-        setImportProgress(Math.round((completed / total) * 100));
+
+        const tempApp = initializeApp(firebaseConfig as any, 'temp-import-teacher-' + Date.now());
+        const tempAuth = getAuth(tempApp);
+        
+        const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          fullName: row.fullName,
+          email: row.email,
+          class: row.class || '',
+          division: row.division || '',
+          phone: row.phone || '',
+          indexNumber: row.indexNumber || '',
+          role: 'teacher',
+          createdAt: new Date().toISOString()
+        });
+        
+        await deleteApp(tempApp);
+      } catch (err) {
+        console.error('Error importing teacher:', err);
       }
+      completed++;
+      setImportProgress(Math.round((completed / total) * 100));
     }
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchTeachers();
-    setToast({ message: 'Import completed', type: 'success' });
+    const message = skipped > 0 
+      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
+      : 'Import completed successfully.';
+    setToast({ message, type: 'success' });
   };
 
   const handleDelete = async (id: string) => {

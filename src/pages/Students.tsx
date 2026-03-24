@@ -272,48 +272,64 @@ export default function Students() {
     };
 
     setIsImporting(true);
-    const total = importPreviewData.filter(row => row.username && row.fullName && row.password).length;
+    // Filter valid rows first
+    const validRows = importPreviewData.filter(row => row.username && row.fullName && row.password && row.indexNumber);
+    const total = validRows.length;
     let completed = 0;
+    let skipped = 0;
 
-    for (const row of importPreviewData) {
-      if (row.username && row.fullName && row.password) {
-        try {
-          const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
-          const tempAuth = getAuth(tempApp);
-          
-          const normalizedUsername = row.username.toLowerCase().trim();
-          const systemEmail = `${normalizedUsername}@school.internal`;
-          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-          
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            email: row.email || '',
-            username: normalizedUsername,
-            systemEmail: systemEmail,
-            fullName: row.fullName,
-            indexNumber: row.indexNumber || '',
-            dob: parseDate(row.dob || ''),
-            class: row.class || '',
-            division: row.division || '',
-            role: 'student',
-            passwordChanged: false,
-            profileCompleted: false,
-            points: 0,
-            createdAt: new Date().toISOString()
-          });
-          
-          await deleteApp(tempApp);
-        } catch (err) {
-          console.error('Error importing student:', err);
+    for (const row of validRows) {
+      try {
+        // Check for duplicate indexNumber
+        const q = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          console.log(`Skipping duplicate student with index: ${row.indexNumber}`);
+          skipped++;
+          completed++;
+          setImportProgress(Math.round((completed / total) * 100));
+          continue;
         }
-        completed++;
-        setImportProgress(Math.round((completed / total) * 100));
+
+        const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
+        const tempAuth = getAuth(tempApp);
+        
+        const normalizedUsername = row.username.toLowerCase().trim();
+        const systemEmail = `${normalizedUsername}@school.internal`;
+        const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email: row.email || '',
+          username: normalizedUsername,
+          systemEmail: systemEmail,
+          fullName: row.fullName,
+          indexNumber: row.indexNumber || '',
+          dob: parseDate(row.dob || ''),
+          class: row.class || '',
+          division: row.division || '',
+          role: 'student',
+          passwordChanged: false,
+          profileCompleted: false,
+          points: 0,
+          createdAt: new Date().toISOString()
+        });
+        
+        await deleteApp(tempApp);
+      } catch (err) {
+        console.error('Error importing student:', err);
       }
+      completed++;
+      setImportProgress(Math.round((completed / total) * 100));
     }
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchStudents();
-    setToast({ message: 'Import completed', type: 'success' });
+    const message = skipped > 0 
+      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
+      : 'Import completed successfully.';
+    setToast({ message, type: 'success' });
   };
 
   const handleDelete = async (id: string) => {

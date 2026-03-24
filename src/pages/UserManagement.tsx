@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, doc, setDoc, deleteDoc, onSnapshot, updateDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot, updateDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig } from '../firebase';
 import { Search, Plus, Trash2, FileDown, FileUp, X, UserPlus, Edit2 } from 'lucide-react';
 import { useAuth } from '../App';
 import Papa from 'papaparse';
@@ -163,42 +163,58 @@ export default function UserManagement() {
 
   const handleConfirmImport = async () => {
     setIsImporting(true);
-    const total = importPreviewData.filter(row => row.username && row.fullName && row.password).length;
+    // Filter valid rows first
+    const validRows = importPreviewData.filter(row => row.username && row.fullName && row.password);
+    const total = validRows.length;
     let completed = 0;
+    let skipped = 0;
 
-    for (const row of importPreviewData) {
-      if (row.username && row.fullName && row.password) {
-        try {
-          const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
-          const tempAuth = getAuth(tempApp);
-          
-          const normalizedUsername = row.username.toLowerCase().trim();
-          const systemEmail = `${normalizedUsername}@school.internal`;
-          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-          
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            email: row.email || '',
-            username: normalizedUsername,
-            systemEmail: systemEmail,
-            fullName: row.fullName,
-            role: row.role || 'student',
-            passwordChanged: false,
-            profileCompleted: false,
-            createdAt: new Date().toISOString()
-          });
-          
-          await deleteApp(tempApp);
-        } catch (err) {
-          console.error('Error importing user:', err);
+    for (const row of validRows) {
+      try {
+        const normalizedUsername = row.username.toLowerCase().trim();
+        // Check for duplicate username
+        const q = query(collection(db, 'users'), where('username', '==', normalizedUsername));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          console.log(`Skipping duplicate user with username: ${normalizedUsername}`);
+          skipped++;
+          completed++;
+          setImportProgress(Math.round((completed / total) * 100));
+          continue;
         }
-        completed++;
-        setImportProgress(Math.round((completed / total) * 100));
+
+        const tempApp = initializeApp(firebaseConfig, 'temp-import-user-' + Date.now());
+        const tempAuth = getAuth(tempApp);
+        
+        const systemEmail = `${normalizedUsername}@school.internal`;
+        const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email: row.email || '',
+          username: normalizedUsername,
+          systemEmail: systemEmail,
+          fullName: row.fullName,
+          role: row.role || 'student',
+          passwordChanged: false,
+          profileCompleted: false,
+          createdAt: new Date().toISOString()
+        });
+        
+        await deleteApp(tempApp);
+      } catch (err) {
+        console.error('Error importing user:', err);
       }
+      completed++;
+      setImportProgress(Math.round((completed / total) * 100));
     }
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
-    setToast({ message: 'Import completed', type: 'success' });
+    const message = skipped > 0 
+      ? `Import completed. ${total - skipped} added, ${skipped} skipped (duplicates).`
+      : 'Import completed successfully.';
+    setToast({ message, type: 'success' });
   };
 
   return (
