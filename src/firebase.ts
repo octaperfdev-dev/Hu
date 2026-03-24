@@ -11,6 +11,8 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  memoryLocalCache,
   collection, 
   doc, 
   getDoc, 
@@ -48,10 +50,28 @@ try {
   if (!firebaseConfig.apiKey) {
     console.warn("Firebase API Key is missing. Check your environment variables.");
   }
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  auth = getAuth(app);
-  db = getFirestore(app);
-  storage = getStorage(app);
+  
+  if (getApps().length === 0) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    // Use initializeFirestore with memoryLocalCache to avoid "Unexpected state (ID: b815)" error
+    // which is often related to persistent storage issues in certain environments.
+    db = initializeFirestore(app, {
+      localCache: memoryLocalCache()
+    });
+    storage = getStorage(app);
+  } else {
+    app = getApp();
+    auth = getAuth(app);
+    try {
+      db = getFirestore(app);
+    } catch (e) {
+      db = initializeFirestore(app, {
+        localCache: memoryLocalCache()
+      });
+    }
+    storage = getStorage(app);
+  }
 } catch (error) {
   console.error("Firebase initialization failed:", error);
 }

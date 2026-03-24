@@ -192,7 +192,7 @@ export default function Students() {
       // Assuming YYYY-MM-DD format from database
       if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [year, month, day] = dateStr.split('-');
-        return `${day}.${month}.${year}`;
+        return `${year}.${month}.${day}`;
       }
       return dateStr;
     };
@@ -221,10 +221,9 @@ export default function Students() {
 
     const parseDate = (dateStr: string) => {
       if (!dateStr) return '';
-      // Check for DD.MM.YYYY format
-      if (dateStr.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
-        const [day, month, year] = dateStr.split('.');
-        return `${year}-${month}-${day}`; // Convert to YYYY-MM-DD
+      // Check for YYYY.MM.DD format
+      if (dateStr.match(/^\d{4}\.\d{2}\.\d{2}$/)) {
+        return dateStr.replace(/\./g, '-'); // Convert to YYYY-MM-DD
       }
       return dateStr; // Assume it's already YYYY-MM-DD or something else
     };
