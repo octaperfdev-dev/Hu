@@ -190,6 +190,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /food_purchases/{purchaseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
     match /home_page_data/{docId} {
       allow read: if true;
       allow write: if isAdmin();

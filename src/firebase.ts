@@ -31,15 +31,8 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-};
+// Import the Firebase configuration
+import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
 let app;
@@ -48,8 +41,8 @@ let db: any;
 let storage: any;
 
 try {
-  if (!firebaseConfig.apiKey) {
-    console.warn("Firebase API Key is missing. Check your environment variables.");
+  if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('remixed-')) {
+    console.warn("Firebase API Key is missing or invalid. Please set up Firebase via the UI.");
   }
   
   if (getApps().length === 0) {
@@ -57,19 +50,20 @@ try {
     auth = getAuth(app);
     // Use initializeFirestore with memoryLocalCache to avoid "Unexpected state (ID: b815)" error
     // which is often related to persistent storage issues in certain environments.
+    // Respect the named database if it's provided in the config
     db = initializeFirestore(app, {
       localCache: memoryLocalCache()
-    });
+    }, (firebaseConfig as any).firestoreDatabaseId);
     storage = getStorage(app);
   } else {
     app = getApp();
     auth = getAuth(app);
     try {
-      db = getFirestore(app);
+      db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
     } catch (e) {
       db = initializeFirestore(app, {
         localCache: memoryLocalCache()
-      });
+      }, (firebaseConfig as any).firestoreDatabaseId);
     }
     storage = getStorage(app);
   }
@@ -122,7 +116,26 @@ export enum OperationType {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error(`Firestore Error during ${operationType} at ${path}:`, error);
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map((provider: any) => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
 export async function seedDatabase(onProgress?: (progress: number) => void) {

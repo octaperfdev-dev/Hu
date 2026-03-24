@@ -72,14 +72,11 @@ export default function Dashboard() {
   const [healthHistory, setHealthHistory] = useState<HealthRecord[]>([]);
   const [activities, setActivities] = useState<ActivityType[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
   const [foodPurchases, setFoodPurchases] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
 
-    setLoading(true);
     let unsubscribes: (() => void)[] = [];
 
     if (user.role === 'admin') {
@@ -135,45 +132,30 @@ export default function Dashboard() {
             foodParticipationToday: allFoodPurchases.filter((p: any) => p.date === new Date().toISOString().split('T')[0]).length,
             totalPointsAwarded: allFoodPurchases.reduce((sum: number, p: any) => sum + (p.pointsAwarded || 0), 0)
           });
-          setLoading(false);
-        });
-      });
+        }).catch(err => handleFirestoreError(err, OperationType.GET, 'admin_dashboard_data'));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
       unsubscribes.push(usersUnsubscribe);
     } else {
       // Student real-time listeners
       const hrUnsubscribe = onSnapshot(query(collection(db, 'health_records'), where('userId', '==', user.id), orderBy('date', 'desc')), (snapshot) => {
         setHealthHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as HealthRecord[]);
-      });
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'health_records'));
       const actUnsubscribe = onSnapshot(query(collection(db, 'activities'), where('userId', '==', user.id), orderBy('date', 'desc')), (snapshot) => {
         setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ActivityType[]);
-      });
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'activities'));
       
       unsubscribes.push(hrUnsubscribe, actUnsubscribe);
 
       if (user.class) {
         const annUnsubscribe = onSnapshot(query(collection(db, 'announcements'), where('class', '==', user.class)), (snapshot) => {
           setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        }, (err) => handleFirestoreError(err, OperationType.LIST, 'announcements'));
         unsubscribes.push(annUnsubscribe);
       }
-      setLoading(false);
     }
 
     return () => unsubscribes.forEach(unsub => unsub());
   }, [user]);
-
-  if (loading) return (
-    <div className="space-y-8 px-4">
-      <div className="h-16 w-64 bg-slate-200 animate-pulse rounded-xl" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Skeleton className="h-96" />
-        <Skeleton className="h-96" />
-      </div>
-    </div>
-  );
 
   if (user?.role === 'admin') {
     const COLORS = ['#3b82f6', '#6366f1', '#f59e0b', '#ef4444'];

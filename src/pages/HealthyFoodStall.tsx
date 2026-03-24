@@ -19,6 +19,14 @@ export default function HealthyFoodStall() {
     if (!indexNumber) return;
     setStatus('pending');
     try {
+      // Validate student exists
+      const userQuery = query(collection(db, 'users'), where('indexNumber', '==', indexNumber));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (userSnapshot.empty) {
+        throw new Error('Student not found');
+      }
+
       await addDoc(collection(db, 'food_purchases'), {
         indexNumber,
         status: 'pending',
@@ -27,11 +35,17 @@ export default function HealthyFoodStall() {
         createdAt: new Date().toISOString()
       });
       setIndexNumber('');
+      setStatus('approved'); // Using approved for success in this context
       setTimeout(() => setStatus('idle'), 3000);
     } catch (e) {
+      console.error(e);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
     }
+  };
+
+  const handleScanFace = () => {
+    alert('Face scanning is not currently implemented.');
   };
 
   return (
@@ -57,7 +71,7 @@ export default function HealthyFoodStall() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           <div className="space-y-6">
-            <button className="w-full bg-blue-600 hover:bg-blue-700 p-8 rounded-3xl text-3xl font-bold flex items-center justify-center gap-4 transition-all shadow-xl shadow-blue-900/20">
+            <button onClick={handleScanFace} className="w-full bg-blue-600 hover:bg-blue-700 p-8 rounded-3xl text-3xl font-bold flex items-center justify-center gap-4 transition-all shadow-xl shadow-blue-900/20">
               <Camera size={32} /> Scan Face
             </button>
             <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl">
