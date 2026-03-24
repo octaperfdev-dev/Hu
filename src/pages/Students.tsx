@@ -40,6 +40,12 @@ export default function Students() {
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Import Preview States
+  const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false);
+  const [importPreviewData, setImportPreviewData] = useState<any[]>([]);
+  const [importProgress, setImportProgress] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
+
   // Form States
   const [formData, setFormData] = useState({
     username: '',
@@ -232,57 +238,82 @@ export default function Students() {
     reader.onload = async (event) => {
       const data = event.target?.result;
       
-      const processStudents = async (studentsToImport: any[]) => {
-        for (const row of studentsToImport) {
-          if (row.username && row.fullName && row.password) {
-            try {
-              const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
-              const tempAuth = getAuth(tempApp);
-              
-              const normalizedUsername = row.username.toLowerCase().trim();
-              const systemEmail = `${normalizedUsername}@school.internal`;
-              const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
-              
-              await setDoc(doc(db, 'users', userCredential.user.uid), {
-                email: row.email || '',
-                username: normalizedUsername,
-                systemEmail: systemEmail,
-                fullName: row.fullName,
-                indexNumber: row.indexNumber || '',
-                dob: parseDate(row.dob || ''),
-                class: row.class || '',
-                division: row.division || '',
-                role: 'student',
-                passwordChanged: false,
-                profileCompleted: false,
-                points: 0,
-                createdAt: new Date().toISOString()
-              });
-              
-              await deleteApp(tempApp);
-            } catch (err) {
-              console.error('Error importing student:', err);
-            }
-          }
-        }
-        fetchStudents();
-        setToast({ message: 'Import completed', type: 'success' });
+      const preparePreview = (data: any[]) => {
+        setImportPreviewData(data);
+        setIsImportPreviewOpen(true);
+        setImportProgress(0);
+        setIsImporting(false);
       };
 
       if (file.name.endsWith('.csv')) {
         Papa.parse(data as string, {
           header: true,
-          complete: (results) => { processStudents(results.data); }
+          complete: (results) => { preparePreview(results.data); }
         });
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
-        processStudents(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
+        preparePreview(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
       }
     };
     
     if (file.name.endsWith('.csv')) reader.readAsText(file);
     else reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmImport = async () => {
+    const parseDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Check for YYYY.MM.DD format
+      if (dateStr.match(/^\d{4}\.\d{2}\.\d{2}$/)) {
+        return dateStr.replace(/\./g, '-'); // Convert to YYYY-MM-DD
+      }
+      return dateStr; // Assume it's already YYYY-MM-DD or something else
+    };
+
+    setIsImporting(true);
+    const total = importPreviewData.filter(row => row.username && row.fullName && row.password).length;
+    let completed = 0;
+
+    for (const row of importPreviewData) {
+      if (row.username && row.fullName && row.password) {
+        try {
+          const tempApp = initializeApp(firebaseConfig as any, 'temp-import-student-' + Date.now());
+          const tempAuth = getAuth(tempApp);
+          
+          const normalizedUsername = row.username.toLowerCase().trim();
+          const systemEmail = `${normalizedUsername}@school.internal`;
+          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+          
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            email: row.email || '',
+            username: normalizedUsername,
+            systemEmail: systemEmail,
+            fullName: row.fullName,
+            indexNumber: row.indexNumber || '',
+            dob: parseDate(row.dob || ''),
+            class: row.class || '',
+            division: row.division || '',
+            role: 'student',
+            passwordChanged: false,
+            profileCompleted: false,
+            points: 0,
+            createdAt: new Date().toISOString()
+          });
+          
+          await deleteApp(tempApp);
+        } catch (err) {
+          console.error('Error importing student:', err);
+        }
+        completed++;
+        setImportProgress(Math.round((completed / total) * 100));
+      }
+    }
+    
+    setIsImporting(false);
+    setIsImportPreviewOpen(false);
+    fetchStudents();
+    setToast({ message: 'Import completed', type: 'success' });
   };
 
   const handleDelete = async (id: string) => {
@@ -602,6 +633,118 @@ export default function Students() {
                 Save Record
               </button>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Import Preview Modal */}
+      {isImportPreviewOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            className="bg-white rounded-[2rem] w-full max-w-4xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Import Preview</h2>
+                <p className="text-slate-500 font-medium">Review the data before updating the database</p>
+              </div>
+              {!isImporting && (
+                <button 
+                  onClick={() => setIsImportPreviewOpen(false)} 
+                  className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-auto p-8">
+              {isImporting ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-8">
+                  <div className="relative w-48 h-48">
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle
+                        cx="96"
+                        cy="96"
+                        r="88"
+                        stroke="currentColor"
+                        strokeWidth="12"
+                        fill="transparent"
+                        className="text-slate-100"
+                      />
+                      <circle
+                        cx="96"
+                        cy="96"
+                        r="88"
+                        stroke="currentColor"
+                        strokeWidth="12"
+                        fill="transparent"
+                        strokeDasharray={552.92}
+                        strokeDashoffset={552.92 - (552.92 * importProgress) / 100}
+                        className="text-blue-500 transition-all duration-500 ease-out"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-4xl font-black text-slate-900">{importProgress}%</span>
+                    </div>
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-bold text-slate-900">Importing Data...</h3>
+                    <p className="text-slate-500">Please do not close this window until the process is complete.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-[1.5rem] overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Username</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Index Number</th>
+                        <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-wider">Class</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importPreviewData.slice(0, 10).map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-bold text-slate-900">{row.fullName || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 font-medium">{row.username || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 font-medium">{row.indexNumber || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 font-medium">{row.class || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importPreviewData.length > 10 && (
+                    <div className="p-4 bg-slate-50 text-center border-t border-slate-200">
+                      <p className="text-sm font-bold text-slate-500 italic">
+                        Showing first 10 of {importPreviewData.length} records...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!isImporting && (
+              <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-4">
+                <button 
+                  onClick={() => setIsImportPreviewOpen(false)} 
+                  className="px-8 py-3 text-slate-600 font-black hover:text-slate-900 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmImport} 
+                  className="px-10 py-3 bg-blue-500 text-white rounded-2xl font-black hover:bg-blue-600 shadow-xl shadow-blue-200 transition-all active:scale-95"
+                >
+                  Verify & Import
+                </button>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
