@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Heart, Lock, User, ChevronRight, AlertCircle, ArrowLeft } from 'lucide-react';
-import { auth, db, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, doc, getDoc, setDoc, query, collection, where, getDocs } from '../firebase';
+import { auth, db, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, doc, getDoc, setDoc, query, collection, where, getDocs, createUserWithEmailAndPassword, deleteDoc, writeBatch } from '../firebase';
 import { useAuth } from '../App';
 
 export default function Login() {
@@ -52,15 +52,89 @@ export default function Login() {
         userId = result.user.uid;
       } catch (err: any) {
         console.error("Firebase Auth Error:", err);
-        if (err.code === 'auth/invalid-credential') {
-          setError('Invalid username or password.');
+        
+        // Lazy Auth: If user not found in Auth, but exists in Firestore with authCreated: false
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+          // We already have userData if they logged in with username
+          // If they logged in with email, we need to find them
+          if (!userData) {
+            const q = query(collection(db, 'users'), where('email', '==', loginEmail));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              userData = snapshot.docs[0].data();
+              userId = snapshot.docs[0].id;
+            }
+          }
+
+          if (userData && userData.authCreated === false && userData.tempPassword === password) {
+            try {
+              console.log("Lazy Auth: Creating account for", loginEmail);
+              const createResult = await createUserWithEmailAndPassword(auth, loginEmail, password);
+              userId = createResult.user.uid;
+              
+              // Move Firestore data to the new UID and mark as authCreated
+              const oldDocRef = doc(db, 'users', userId); // This is wrong, the old doc has a random ID
+              // Wait, I need the document ID of the existing Firestore doc
+              const q = query(collection(db, 'users'), where('username', '==', userData.username));
+              const snapshot = await getDocs(q);
+              const existingDocId = snapshot.docs[0].id;
+              
+              // Update existing document with new UID if necessary, or just update it
+              // Actually, it's better to keep the same document ID if possible, but createUser generates a new UID.
+              // So we should probably delete the old doc and create a new one with the Auth UID, 
+              // or just update the old one and link it.
+              // The app uses doc(db, 'users', userId) in many places, so we MUST use the Auth UID.
+              
+              const { tempPassword, authCreated, ...rest } = userData;
+              const batch = writeBatch(db);
+              
+              // Create new user document with Auth UID
+              batch.set(doc(db, 'users', userId), {
+                ...rest,
+                authCreated: true,
+                uid: userId
+              });
+              
+              // Delete the temporary document
+              if (existingDocId !== userId) {
+                batch.delete(doc(db, 'users', existingDocId));
+              }
+
+              // Migrate linked records (health_records, activities, etc.)
+              const collectionsToMigrate = ['health_records', 'activities', 'badges', 'organic_reservations', 'breakfast_reservations', 'likes'];
+              
+              for (const colName of collectionsToMigrate) {
+                const qMigrate = query(collection(db, colName), where('userId', '==', existingDocId));
+                const snapshotMigrate = await getDocs(qMigrate);
+                snapshotMigrate.docs.forEach(recordDoc => {
+                  batch.update(recordDoc.ref, { userId: userId });
+                });
+              }
+
+              await batch.commit();
+              
+              userData = { ...rest, authCreated: true, uid: userId };
+              result = createResult;
+            } catch (createErr) {
+              console.error("Lazy Auth creation failed:", createErr);
+              setError('Account creation failed. Please contact support.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError('Invalid username or password.');
+            setLoading(false);
+            return;
+          }
         } else if (err.code === 'auth/too-many-requests') {
           setError('Too many failed login attempts. Please try again later.');
+          setLoading(false);
+          return;
         } else {
           setError('Failed to sign in. Please check your credentials.');
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
       }
 
       // If we haven't fetched userData yet (because they logged in with email), fetch it now

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, doc, updateDoc, deleteDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut, writeBatch } from '../firebase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { Plus, Search, Edit2, Trash2, UserPlus, FileDown, FileUp, X } from 'lucide-react';
@@ -155,29 +155,27 @@ export default function AdminTeachers() {
     let added = 0;
     let errors = 0;
 
-    // Create a single temporary app for the entire import session
-    const tempAppName = 'bulk-import-teachers-' + Date.now();
-    const tempApp = initializeApp(firebaseConfig as any, tempAppName);
-    const tempAuth = getAuth(tempApp);
+    // Use Firestore batches for high performance
+    const batchSize = 500;
+    for (let i = 0; i < validRows.length; i += batchSize) {
+      const batch = writeBatch(db);
+      const currentBatchRows = validRows.slice(i, i + batchSize);
 
-    for (const row of validRows) {
-      try {
-        // Check for duplicate email
-        const q = query(collection(db, 'users'), where('email', '==', row.email));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          console.log(`Skipping duplicate teacher with email: ${row.email}`);
-          skipped++;
-          completed++;
-          setImportProgress(Math.round((completed / total) * 100));
-          continue;
-        }
-
+      for (const row of currentBatchRows) {
         try {
-          const userCredential = await createUserWithEmailAndPassword(tempAuth, row.email, row.password);
+          // Check for duplicate email
+          const q = query(collection(db, 'users'), where('email', '==', row.email));
+          const querySnapshot = await getDocs(q);
           
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
+          if (!querySnapshot.empty) {
+            console.log(`Skipping duplicate teacher with email: ${row.email}`);
+            skipped++;
+            continue;
+          }
+
+          const userRef = doc(collection(db, 'users'));
+          
+          batch.set(userRef, {
             fullName: row.fullName,
             email: row.email,
             class: row.class || '',
@@ -185,36 +183,36 @@ export default function AdminTeachers() {
             phone: row.phone || '',
             indexNumber: row.indexNumber || '',
             role: 'teacher',
+            authCreated: false,
+            tempPassword: row.password,
             createdAt: new Date().toISOString()
           });
           
-          await signOut(tempAuth);
           added++;
-        } catch (authErr: any) {
-          console.error(`Error importing teacher ${row.email}:`, authErr.message);
+        } catch (err) {
+          console.error('Error preparing teacher for batch:', err);
           errors++;
         }
-        
-        // Small delay to avoid hitting rate limits too fast
-        await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (err) {
-        console.error('General error importing teacher:', err);
-        errors++;
       }
-      completed++;
-      setImportProgress(Math.round((completed / total) * 100));
+
+      try {
+        await batch.commit();
+        completed += currentBatchRows.length;
+        setImportProgress(Math.round((completed / total) * 100));
+      } catch (batchErr) {
+        console.error('Error committing batch:', batchErr);
+        errors += currentBatchRows.length;
+      }
     }
-    
-    // Cleanup the temporary app
-    await deleteApp(tempApp);
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchTeachers();
     
-    let message = `Import finished. ${added} added.`;
+    let message = `Import finished. ${added} added to database.`;
     if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
-    if (errors > 0) message += ` ${errors} failed (errors).`;
+    if (errors > 0) message += ` ${errors} failed.`;
+    message += " Accounts will be created automatically on first login.";
     
     setToast({ message, type: errors > 0 ? 'error' : 'success' });
   };

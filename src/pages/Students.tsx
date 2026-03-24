@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut, writeBatch } from '../firebase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { 
@@ -280,39 +280,39 @@ export default function Students() {
     let added = 0;
     let errors = 0;
 
-    // Create a single temporary app for the entire import session
-    const tempAppName = 'bulk-import-students-' + Date.now();
-    const tempApp = initializeApp(firebaseConfig as any, tempAppName);
-    const tempAuth = getAuth(tempApp);
+    // Use Firestore batches for high performance (500 docs per batch)
+    const batchSize = 500;
+    for (let i = 0; i < validRows.length; i += batchSize) {
+      const batch = writeBatch(db);
+      const currentBatchRows = validRows.slice(i, i + batchSize);
 
-    for (const row of validRows) {
-      try {
-        const normalizedUsername = row.username.toLowerCase().trim();
-        const systemEmail = `${normalizedUsername}@school.internal`;
-
-        // Check for duplicate indexNumber or username in main database
-        const qIndex = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
-        const qUsername = query(collection(db, 'users'), where('username', '==', normalizedUsername));
-        
-        const [indexSnapshot, usernameSnapshot] = await Promise.all([
-          getDocs(qIndex),
-          getDocs(qUsername)
-        ]);
-        
-        if (!indexSnapshot.empty || !usernameSnapshot.empty) {
-          console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
-          skipped++;
-          completed++;
-          setImportProgress(Math.round((completed / total) * 100));
-          continue;
-        }
-
+      for (const row of currentBatchRows) {
         try {
-          // Create user in Auth
-          const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, row.password);
+          const normalizedUsername = row.username.toLowerCase().trim();
+          const systemEmail = `${normalizedUsername}@school.internal`;
+
+          // Check for duplicate indexNumber or username in main database
+          // Note: In a high-performance batch, we ideally check duplicates beforehand or handle them.
+          // For 3000 records, we'll do a quick check.
+          const qIndex = query(collection(db, 'users'), where('indexNumber', '==', row.indexNumber));
+          const qUsername = query(collection(db, 'users'), where('username', '==', normalizedUsername));
           
-          // Save to Firestore
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
+          const [indexSnapshot, usernameSnapshot] = await Promise.all([
+            getDocs(qIndex),
+            getDocs(qUsername)
+          ]);
+          
+          if (!indexSnapshot.empty || !usernameSnapshot.empty) {
+            console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
+            skipped++;
+            continue;
+          }
+
+          // Generate a unique ID for the user document
+          // Since we aren't creating the Auth account yet, we generate a random ID
+          const userRef = doc(collection(db, 'users'));
+          
+          batch.set(userRef, {
             email: row.email || '',
             username: normalizedUsername,
             systemEmail: systemEmail,
@@ -325,37 +325,36 @@ export default function Students() {
             passwordChanged: false,
             profileCompleted: false,
             points: 0,
+            authCreated: false, // Flag for Lazy Auth
+            tempPassword: row.password, // Store temporarily for first login
             createdAt: new Date().toISOString()
           });
           
-          // Sign out from temp auth to avoid session conflicts
-          await signOut(tempAuth);
           added++;
-        } catch (authErr: any) {
-          console.error(`Error importing student ${row.username}:`, authErr.message);
+        } catch (err) {
+          console.error('Error preparing student for batch:', err);
           errors++;
         }
-        
-        // Small delay to avoid hitting rate limits too fast
-        await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (err) {
-        console.error('General error importing student:', err);
-        errors++;
       }
-      completed++;
-      setImportProgress(Math.round((completed / total) * 100));
+
+      try {
+        await batch.commit();
+        completed += currentBatchRows.length;
+        setImportProgress(Math.round((completed / total) * 100));
+      } catch (batchErr) {
+        console.error('Error committing batch:', batchErr);
+        errors += currentBatchRows.length;
+      }
     }
-    
-    // Cleanup the temporary app
-    await deleteApp(tempApp);
     
     setIsImporting(false);
     setIsImportPreviewOpen(false);
     fetchStudents();
     
-    let message = `Import finished. ${added} added.`;
+    let message = `Import finished. ${added} added to database.`;
     if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
-    if (errors > 0) message += ` ${errors} failed (errors).`;
+    if (errors > 0) message += ` ${errors} failed.`;
+    message += " Accounts will be created automatically on first login.";
     
     setToast({ message, type: errors > 0 ? 'error' : 'success' });
   };

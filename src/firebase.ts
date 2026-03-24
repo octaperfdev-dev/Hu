@@ -26,7 +26,8 @@ import {
   where, 
   orderBy, 
   limit, 
-  increment 
+  increment,
+  writeBatch
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -94,6 +95,7 @@ export {
   orderBy,
   limit,
   increment,
+  writeBatch,
   ref,
   uploadBytes,
   getDownloadURL,
