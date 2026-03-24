@@ -74,6 +74,8 @@ export default function Dashboard() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [foodPurchases, setFoodPurchases] = useState<any[]>([]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -85,49 +87,55 @@ export default function Dashboard() {
       const usersUnsubscribe = onSnapshot(query(collection(db, 'users'), where('role', '==', 'student')), (snapshot) => {
         const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        // Fetch health records and activities (could also be snapshots if needed, but users is the main driver)
-        getDocs(collection(db, 'health_records')).then(hrSnapshot => {
-          getDocs(collection(db, 'activities')).then(actSnapshot => {
-            const allHealthRecords = hrSnapshot.docs.map(doc => doc.data());
-            const allActivities = actSnapshot.docs.map(doc => doc.data());
+        // Fetch health records, activities, and food purchases in parallel
+        Promise.all([
+          getDocs(collection(db, 'health_records')),
+          getDocs(collection(db, 'activities')),
+          getDocs(collection(db, 'food_purchases'))
+        ]).then(([hrSnapshot, actSnapshot, fpSnapshot]) => {
+          const allHealthRecords = hrSnapshot.docs.map(doc => doc.data());
+          const allActivities = actSnapshot.docs.map(doc => doc.data());
+          const allFoodPurchases = fpSnapshot.docs.map(doc => doc.data());
+          setFoodPurchases(allFoodPurchases);
 
-            // Calculate analytics
-            const totalStudents = students.length;
-            const bmiCategories: Record<string, number> = {};
-            allHealthRecords.forEach((record: any) => {
-              if (record.category) {
-                bmiCategories[record.category] = (bmiCategories[record.category] || 0) + 1;
-              }
-            });
-            const bmiStats = Object.entries(bmiCategories).map(([category, count]) => ({ category, count }));
-            
-            const classBmiMap: Record<string, { total: number, count: number }> = {};
-            students.forEach((student: any) => {
-              if (student.class) {
-                const studentRecords = allHealthRecords.filter((r: any) => r.userId === student.id);
-                if (studentRecords.length > 0) {
-                  const latestRecord: any = studentRecords.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                  if (latestRecord.bmi) {
-                    if (!classBmiMap[student.class]) classBmiMap[student.class] = { total: 0, count: 0 };
-                    classBmiMap[student.class].total += latestRecord.bmi;
-                    classBmiMap[student.class].count++;
-                  }
+          // Calculate analytics
+          const totalStudents = students.length;
+          const bmiCategories: Record<string, number> = {};
+          allHealthRecords.forEach((record: any) => {
+            if (record.category) {
+              bmiCategories[record.category] = (bmiCategories[record.category] || 0) + 1;
+            }
+          });
+          const bmiStats = Object.entries(bmiCategories).map(([category, count]) => ({ category, count }));
+          
+          const classBmiMap: Record<string, { total: number, count: number }> = {};
+          students.forEach((student: any) => {
+            if (student.class) {
+              const studentRecords = allHealthRecords.filter((r: any) => r.userId === student.id);
+              if (studentRecords.length > 0) {
+                const latestRecord: any = studentRecords.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                if (latestRecord.bmi) {
+                  if (!classBmiMap[student.class]) classBmiMap[student.class] = { total: 0, count: 0 };
+                  classBmiMap[student.class].total += latestRecord.bmi;
+                  classBmiMap[student.class].count++;
                 }
               }
-            });
-            const classStats = Object.entries(classBmiMap).map(([className, data]) => ({
-              class: className,
-              avgBmi: data.total / data.count
-            }));
-
-            setAnalytics({
-              totalStudents,
-              bmiStats,
-              classStats,
-              activityStats: [{ type: 'sport', count: allActivities.filter((a: any) => a.type === 'sport').length }]
-            });
-            setLoading(false);
+            }
           });
+          const classStats = Object.entries(classBmiMap).map(([className, data]) => ({
+            class: className,
+            avgBmi: data.total / data.count
+          }));
+
+          setAnalytics({
+            totalStudents,
+            bmiStats,
+            classStats,
+            activityStats: [{ type: 'sport', count: allActivities.filter((a: any) => a.type === 'sport').length }],
+            foodParticipationToday: allFoodPurchases.filter((p: any) => p.date === new Date().toISOString().split('T')[0]).length,
+            totalPointsAwarded: allFoodPurchases.reduce((sum: number, p: any) => sum + (p.pointsAwarded || 0), 0)
+          });
+          setLoading(false);
         });
       });
       unsubscribes.push(usersUnsubscribe);
@@ -207,6 +215,18 @@ export default function Dashboard() {
             trend="up" 
             trendValue="5.2%" 
             color="bg-violet-500" 
+          />
+          <StatCard 
+            icon={Heart} 
+            label="Food Participation Today" 
+            value={analytics?.foodParticipationToday || 0} 
+            color="bg-emerald-500" 
+          />
+          <StatCard 
+            icon={Award} 
+            label="Total Points Awarded" 
+            value={analytics?.totalPointsAwarded || 0} 
+            color="bg-amber-500" 
           />
         </div>
 

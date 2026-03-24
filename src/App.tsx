@@ -61,6 +61,8 @@ export const useAuth = () => {
 };
 
 // Components
+import HealthyFoodStall from './pages/HealthyFoodStall';
+import HealthyFoodAdmin from './pages/HealthyFoodAdmin';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
@@ -160,6 +162,7 @@ const Layout = () => {
     { icon: ShoppingCart, label: 'My Reservations', path: '/my-reservations', roles: ['admin', 'student', 'teacher'] },
     { icon: Coffee, label: 'Breakfast Club', path: '/breakfast', roles: ['admin', 'student', 'teacher'] },
     { icon: Coffee, label: 'My Breakfast', path: '/my-breakfast', roles: ['admin', 'student', 'teacher'] },
+    { icon: ShieldCheck, label: 'Healthy Food Admin', path: '/healthy-food-admin', roles: ['admin'] },
     { icon: ShieldCheck, label: 'Organic Admin', path: '/organic-admin', roles: ['admin'] },
     { icon: ShieldCheck, label: 'Breakfast Admin', path: '/breakfast-admin', roles: ['admin'] },
     { icon: Users, label: 'User Management', path: '/admin/users', roles: ['admin'] },
@@ -434,6 +437,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/change-password" element={<ChangePassword />} />
+          <Route path="/healthy-food" element={<HealthyFoodStall />} />
           
           {/* Protected Routes with Persistent Layout */}
           <Route element={<ProtectedRoute allowedRoles={['admin', 'student']} />}>
@@ -501,6 +505,7 @@ export default function App() {
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/organic-admin" element={<OrganicClubAdmin />} />
             <Route path="/breakfast-admin" element={<BreakfastClubAdmin />} />
+            <Route path="/healthy-food-admin" element={<HealthyFoodAdmin />} />
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/students" element={<Students />} />
             <Route path="/admin/teachers" element={<AdminTeachers />} />

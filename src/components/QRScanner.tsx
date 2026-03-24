@@ -8,36 +8,41 @@ export default function QRScanner({ onClose, onScan }: { onClose: () => void, on
   const navigate = useNavigate();
 
   useEffect(() => {
-    const scanner = new Html5QrcodeScanner(
-      "qr-reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      false
-    );
+    const timer = setTimeout(() => {
+      const scanner = new Html5QrcodeScanner(
+        "qr-reader",
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        false
+      );
 
-    scanner.render(
-      (decodedText) => {
-        scanner.clear();
-        onClose();
-        if (onScan) {
-          onScan(decodedText);
-        } else {
-          // Assuming the QR code contains the full URL or just the path
-          if (decodedText.startsWith('http')) {
-            window.location.href = decodedText;
+      scanner.render(
+        (decodedText) => {
+          scanner.clear();
+          onClose();
+          if (onScan) {
+            onScan(decodedText);
           } else {
-            navigate(decodedText);
+            // Assuming the QR code contains the full URL or just the path
+            if (decodedText.startsWith('http')) {
+              window.location.href = decodedText;
+            } else {
+              navigate(decodedText);
+            }
           }
+        },
+        (error) => {
+          console.warn(error);
         }
-      },
-      (error) => {
-        console.warn(error);
-      }
-    );
+      );
 
-    scannerRef.current = scanner;
+      scannerRef.current = scanner;
+    }, 500);
 
     return () => {
-      scanner.clear();
+      clearTimeout(timer);
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(console.error);
+      }
     };
   }, [navigate, onClose]);
 

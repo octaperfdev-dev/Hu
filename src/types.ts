@@ -27,6 +27,9 @@ export interface HealthRecord {
   height: number;
   weight: number;
   bmi: number;
+  hip?: number;
+  waist?: number;
+  gripStrength?: number;
   category: string;
   date: string;
   createdAt: string;
@@ -98,5 +101,27 @@ export interface Module {
   imageUrl: string;
   link: string;
   category: string;
+  createdAt: string;
+}
+
+export interface FoodMenuItem {
+  id: string;
+  name: string;
+  price: number;
+  createdAt: string;
+}
+
+export interface FoodPurchase {
+  id: string;
+  userId: string;
+  date: string;
+  pointsAwarded: number;
+  createdAt: string;
+}
+
+export interface StudentFaceData {
+  id: string;
+  userId: string;
+  imageUrls: string[];
   createdAt: string;
 }

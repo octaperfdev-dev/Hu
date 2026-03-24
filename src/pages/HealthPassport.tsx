@@ -242,7 +242,7 @@ export default function HealthPassport() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Health Metrics & History */}
           <div className="lg:col-span-2 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center">
@@ -260,6 +260,24 @@ export default function HealthPassport() {
                   <span className="text-sm font-bold text-slate-500">Height</span>
                 </div>
                 <p className="text-2xl font-bold text-slate-900">{latestRecord?.height || 0} cm</p>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
+                    <Ruler size={20} />
+                  </div>
+                  <span className="text-sm font-bold text-slate-500">Hip/Waist</span>
+                </div>
+                <p className="text-2xl font-bold text-slate-900">{latestRecord?.hip || 0} / {latestRecord?.waist || 0} cm</p>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                    <Activity size={20} />
+                  </div>
+                  <span className="text-sm font-bold text-slate-500">Grip</span>
+                </div>
+                <p className="text-2xl font-bold text-slate-900">{latestRecord?.gripStrength || 0} kg</p>
               </div>
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">

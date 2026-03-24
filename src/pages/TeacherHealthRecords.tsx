@@ -11,12 +11,20 @@ export default function TeacherHealthRecords() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterClass, setFilterClass] = useState('');
+  const [filterGrade, setFilterGrade] = useState('');
+  const [filterDivision, setFilterDivision] = useState('');
+  const [filterHealthLevel, setFilterHealthLevel] = useState('');
+  const [filterDate, setFilterDate] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   
   const [formData, setFormData] = useState({
     userId: '',
     height: '',
     weight: '',
+    hip: '',
+    waist: '',
+    gripStrength: '',
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
@@ -45,17 +53,20 @@ export default function TeacherHealthRecords() {
         const healthSnapshot = await getDocs(healthQ);
         let latestBmi = null;
         let healthCategory = 'N/A';
+        let latestDate = '';
         
         if (!healthSnapshot.empty) {
           const latestRecord = healthSnapshot.docs[0].data();
           latestBmi = latestRecord.bmi;
           healthCategory = latestRecord.category;
+          latestDate = latestRecord.date;
         }
 
         return {
           ...student,
           latestBmi,
-          healthCategory
+          healthCategory,
+          latestDate
         };
       }));
 
@@ -72,17 +83,25 @@ export default function TeacherHealthRecords() {
     try {
       const heightInMeters = parseFloat(formData.height) / 100;
       const weightInKg = parseFloat(formData.weight);
+      const hip = parseFloat(formData.hip);
+      const waist = parseFloat(formData.waist);
+      const gripStrength = parseFloat(formData.gripStrength);
+      
       const bmi = weightInKg / (heightInMeters * heightInMeters);
       
       let category = 'Normal';
       if (bmi < 18.5) category = 'Underweight';
       else if (bmi >= 25 && bmi < 30) category = 'Overweight';
       else if (bmi >= 30) category = 'Obese';
+      if (waist && hip && (waist / hip > 0.9)) category = 'At Risk (Waist/Hip)';
 
       await addDoc(collection(db, 'health_records'), {
         ...formData,
         height: parseFloat(formData.height),
         weight: weightInKg,
+        hip,
+        waist,
+        gripStrength,
         bmi,
         category,
         createdAt: new Date().toISOString()
@@ -94,6 +113,9 @@ export default function TeacherHealthRecords() {
         userId: '',
         height: '',
         weight: '',
+        hip: '',
+        waist: '',
+        gripStrength: '',
         date: new Date().toISOString().split('T')[0],
         notes: ''
       });
@@ -102,10 +124,15 @@ export default function TeacherHealthRecords() {
       handleFirestoreError(error, OperationType.CREATE, 'health_records');
     }
   };
-
-  const filteredStudents = students.filter((s: any) => 
-    s.fullName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredStudents = students.filter((s: any) => {
+    const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesClass = filterClass ? s.class === filterClass : true;
+    const matchesGrade = filterGrade ? s.grade === filterGrade : true; // Assuming grade is a field
+    const matchesDivision = filterDivision ? s.division === filterDivision : true;
+    const matchesHealthLevel = filterHealthLevel ? s.healthCategory === filterHealthLevel : true;
+    const matchesDate = filterDate ? s.latestDate === filterDate : true;
+    return matchesSearch && matchesClass && matchesGrade && matchesDivision && matchesHealthLevel && matchesDate;
+  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -124,7 +151,7 @@ export default function TeacherHealthRecords() {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+        <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input
@@ -135,6 +162,27 @@ export default function TeacherHealthRecords() {
               className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64"
             />
           </div>
+          <select value={filterClass} onChange={e => setFilterClass(e.target.value)} className="p-2 border border-slate-200 rounded-xl">
+            <option value="">All Classes</option>
+            {/* Add class options */}
+          </select>
+          <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} className="p-2 border border-slate-200 rounded-xl">
+            <option value="">All Grades</option>
+            {/* Add grade options */}
+          </select>
+          <select value={filterDivision} onChange={e => setFilterDivision(e.target.value)} className="p-2 border border-slate-200 rounded-xl">
+            <option value="">All Divisions</option>
+            {/* Add division options */}
+          </select>
+          <select value={filterHealthLevel} onChange={e => setFilterHealthLevel(e.target.value)} className="p-2 border border-slate-200 rounded-xl">
+            <option value="">All Health Levels</option>
+            <option value="Normal">Normal</option>
+            <option value="Underweight">Underweight</option>
+            <option value="Overweight">Overweight</option>
+            <option value="Obese">Obese</option>
+            <option value="At Risk (Waist/Hip)">At Risk (Waist/Hip)</option>
+          </select>
+          <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="p-2 border border-slate-200 rounded-xl" />
         </div>
 
         <div className="overflow-x-auto">
