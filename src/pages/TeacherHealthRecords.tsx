@@ -125,7 +125,7 @@ export default function TeacherHealthRecords() {
     }
   };
   const filteredStudents = students.filter((s: any) => {
-    const matchesSearch = s.fullName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesClass = filterClass ? s.class === filterClass : true;
     const matchesGrade = filterGrade ? s.grade === filterGrade : true; // Assuming grade is a field
     const matchesDivision = filterDivision ? s.division === filterDivision : true;

@@ -72,11 +72,12 @@ export default function Dashboard() {
   const [healthHistory, setHealthHistory] = useState<HealthRecord[]>([]);
   const [activities, setActivities] = useState<ActivityType[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [foodPurchases, setFoodPurchases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
 
+    setLoading(true);
     let unsubscribes: (() => void)[] = [];
 
     if (user.role === 'admin') {
@@ -84,87 +85,123 @@ export default function Dashboard() {
       const usersUnsubscribe = onSnapshot(query(collection(db, 'users'), where('role', '==', 'student')), (snapshot) => {
         const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        // Fetch health records, activities, and food purchases in parallel
-        Promise.all([
-          getDocs(collection(db, 'health_records')),
-          getDocs(collection(db, 'activities')),
-          getDocs(collection(db, 'food_purchases'))
-        ]).then(([hrSnapshot, actSnapshot, fpSnapshot]) => {
-          const allHealthRecords = hrSnapshot.docs.map(doc => doc.data());
-          const allActivities = actSnapshot.docs.map(doc => doc.data());
-          const allFoodPurchases = fpSnapshot.docs.map(doc => doc.data());
-          setFoodPurchases(allFoodPurchases);
+        // Fetch health records and activities (could also be snapshots if needed, but users is the main driver)
+        getDocs(collection(db, 'health_records')).then(hrSnapshot => {
+          getDocs(collection(db, 'activities')).then(actSnapshot => {
+            const allHealthRecords = hrSnapshot.docs.map(doc => doc.data());
+            const allActivities = actSnapshot.docs.map(doc => doc.data());
 
-          // Calculate analytics
-          const totalStudents = students.length;
-          const bmiCategories: Record<string, number> = {};
-          allHealthRecords.forEach((record: any) => {
-            if (record.category) {
-              bmiCategories[record.category] = (bmiCategories[record.category] || 0) + 1;
-            }
-          });
-          const bmiStats = Object.entries(bmiCategories).map(([category, count]) => ({ category, count }));
-          
-          const classBmiMap: Record<string, { total: number, count: number }> = {};
-          students.forEach((student: any) => {
-            if (student.class) {
-              const studentRecords = allHealthRecords.filter((r: any) => r.userId === student.id);
-              if (studentRecords.length > 0) {
-                const latestRecord: any = studentRecords.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                if (latestRecord.bmi) {
-                  if (!classBmiMap[student.class]) classBmiMap[student.class] = { total: 0, count: 0 };
-                  classBmiMap[student.class].total += latestRecord.bmi;
-                  classBmiMap[student.class].count++;
+            // Calculate analytics
+            const totalStudents = students.length;
+            const bmiCategories: Record<string, number> = {};
+            allHealthRecords.forEach((record: any) => {
+              if (record.category) {
+                bmiCategories[record.category] = (bmiCategories[record.category] || 0) + 1;
+              }
+            });
+            const bmiStats = Object.entries(bmiCategories).map(([category, count]) => ({ category, count }));
+            
+            const classBmiMap: Record<string, { total: number, count: number }> = {};
+            students.forEach((student: any) => {
+              if (student.class) {
+                const studentRecords = allHealthRecords.filter((r: any) => r.userId === student.id);
+                if (studentRecords.length > 0) {
+                  const latestRecord: any = studentRecords.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                  if (latestRecord.bmi) {
+                    if (!classBmiMap[student.class]) classBmiMap[student.class] = { total: 0, count: 0 };
+                    classBmiMap[student.class].total += latestRecord.bmi;
+                    classBmiMap[student.class].count++;
+                  }
                 }
               }
-            }
-          });
-          const classStats = Object.entries(classBmiMap).map(([className, data]) => ({
-            class: className,
-            avgBmi: data.total / data.count
-          }));
+            });
+            const classStats = Object.entries(classBmiMap).map(([className, data]) => ({
+              class: className,
+              avgBmi: data.total / data.count
+            }));
 
-          setAnalytics({
-            totalStudents,
-            bmiStats,
-            classStats,
-            activityStats: [{ type: 'sport', count: allActivities.filter((a: any) => a.type === 'sport').length }],
-            foodParticipationToday: allFoodPurchases.filter((p: any) => p.date === new Date().toISOString().split('T')[0]).length,
-            totalPointsAwarded: allFoodPurchases.reduce((sum: number, p: any) => sum + (p.pointsAwarded || 0), 0)
+            setAnalytics({
+              totalStudents,
+              bmiStats,
+              classStats,
+              activityStats: [{ type: 'sport', count: allActivities.filter((a: any) => a.type === 'sport').length }]
+            });
+            setLoading(false);
           });
-        }).catch(err => handleFirestoreError(err, OperationType.GET, 'admin_dashboard_data'));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+        });
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'users'));
       unsubscribes.push(usersUnsubscribe);
     } else {
       // Student real-time listeners
       const hrUnsubscribe = onSnapshot(query(collection(db, 'health_records'), where('userId', '==', user.id), orderBy('date', 'desc')), (snapshot) => {
         setHealthHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as HealthRecord[]);
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'health_records'));
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'health_records'));
       const actUnsubscribe = onSnapshot(query(collection(db, 'activities'), where('userId', '==', user.id), orderBy('date', 'desc')), (snapshot) => {
         setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ActivityType[]);
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'activities'));
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'activities'));
       
       unsubscribes.push(hrUnsubscribe, actUnsubscribe);
 
       if (user.class) {
         const annUnsubscribe = onSnapshot(query(collection(db, 'announcements'), where('class', '==', user.class)), (snapshot) => {
           setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, (err) => handleFirestoreError(err, OperationType.LIST, 'announcements'));
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'announcements'));
         unsubscribes.push(annUnsubscribe);
       }
+      setLoading(false);
     }
 
     return () => unsubscribes.forEach(unsub => unsub());
   }, [user]);
+
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedProgress, setSeedProgress] = useState(0);
+
+  const handleSeed = async () => {
+    if (!window.confirm('This will populate the database with mock data. Continue?')) return;
+    setIsSeeding(true);
+    try {
+      const { seedDatabase } = await import('../firebase');
+      await seedDatabase((progress) => setSeedProgress(progress));
+      alert('Database seeded successfully!');
+    } catch (err) {
+      console.error('Seeding failed:', err);
+      alert('Seeding failed. Check console for details.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  if (loading) return (
+    <div className="space-y-8 px-4">
+      <div className="h-16 w-64 bg-slate-200 animate-pulse rounded-xl" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Skeleton className="h-96" />
+        <Skeleton className="h-96" />
+      </div>
+    </div>
+  );
 
   if (user?.role === 'admin') {
     const COLORS = ['#3b82f6', '#6366f1', '#f59e0b', '#ef4444'];
     
     return (
       <div className="space-y-8 px-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Admin Overview</h1>
-          <p className="text-slate-500">Real-time school health analytics</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin Overview</h1>
+            <p className="text-slate-500">Real-time school health analytics</p>
+          </div>
+          <button
+            onClick={handleSeed}
+            disabled={isSeeding}
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSeeding ? `Seeding ${seedProgress}%` : 'Seed Database'}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -197,18 +234,6 @@ export default function Dashboard() {
             trend="up" 
             trendValue="5.2%" 
             color="bg-violet-500" 
-          />
-          <StatCard 
-            icon={Heart} 
-            label="Food Participation Today" 
-            value={analytics?.foodParticipationToday || 0} 
-            color="bg-emerald-500" 
-          />
-          <StatCard 
-            icon={Award} 
-            label="Total Points Awarded" 
-            value={analytics?.totalPointsAwarded || 0} 
-            color="bg-amber-500" 
           />
         </div>
 

@@ -239,6 +239,46 @@
         "createdAt": { "type": "timestamp" }
       },
       "required": ["userId", "itemId", "type", "quantity", "totalPrice", "status"]
+    },
+    "Badge": {
+      "title": "Badge",
+      "description": "A badge earned by a student.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "type", "name", "date"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "A like on a post or comment.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["post", "comment"] },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "targetId", "targetType"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "A comment on a post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "content": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["userId", "postId", "content"]
     }
   },
   "firestore": {
@@ -309,6 +349,26 @@
     "reservations/{reservationId}": {
       "schema": { "$ref": "#/entities/Reservation" },
       "description": "Reservations."
+    },
+    "organic_reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Organic vegetable reservations."
+    },
+    "breakfast_reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Breakfast item reservations."
+    },
+    "badges/{badgeId}": {
+      "schema": { "$ref": "#/entities/Badge" },
+      "description": "Student badges."
+    },
+    "likes/{likeId}": {
+      "schema": { "$ref": "#/entities/Like" },
+      "description": "Likes."
+    },
+    "comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments."
     }
   }
 }

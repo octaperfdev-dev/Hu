@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, doc, getDoc, orderBy } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, doc, getDoc, orderBy, limit } from '../firebase';
 import { 
   Heart, 
   Brain, 
@@ -31,7 +31,7 @@ import {
   User,
   Ruler,
   Github,
-  Scale as ScaleIcon
+  Scale
 } from 'lucide-react';
 import QRScanner from '../components/QRScanner';
 import { Globe } from 'lucide-react';
@@ -149,22 +149,22 @@ export default function Home() {
       try {
         const [modulesSnapshot, usersSnapshot, breakfastSnapshot, vegSnapshot] = await Promise.all([
           getDocs(collection(db, 'modules')),
-          getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
+          getDocs(query(collection(db, 'users'), where('role', '==', 'student'), orderBy('points', 'desc'), limit(10))),
           getDocs(collection(db, 'breakfast_items')),
           getDocs(collection(db, 'vegetables'))
         ]);
         
         const modulesData = modulesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Module));
         
-        const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const leaderboardData = usersData
-          .sort((a: any, b: any) => (b.points || 0) - (a.points || 0))
-          .map((u: any, i) => ({
+        const leaderboardData = usersSnapshot.docs.map((doc, i) => {
+          const u = doc.data() as any;
+          return {
             rank: i + 1,
-            name: u.fullName,
+            name: u.fullName || 'Unnamed Student',
             points: u.points || 0,
-            avatar: u.photoUrl || `https://picsum.photos/seed/${u.username}/400/400`
-          }));
+            avatar: u.photoUrl || `https://ui-avatars.com/api/?name=${u.fullName || 'S'}&background=3b82f6&color=fff`
+          };
+        });
           
         const breakfastData = breakfastSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const vegData = vegSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

@@ -79,7 +79,7 @@ export default function TeacherActivities() {
   };
 
   const filteredStudents = students.filter((s: any) => 
-    s.fullName.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

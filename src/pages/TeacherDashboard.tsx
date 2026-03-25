@@ -66,6 +66,9 @@ export default function TeacherDashboard() {
       } finally {
         setLoading(false);
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'users');
+      setLoading(false);
     });
 
     return () => unsubscribeStudents();

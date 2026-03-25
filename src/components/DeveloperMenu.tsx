@@ -7,22 +7,27 @@ export default function DeveloperMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedProgress, setSeedProgress] = useState(0);
-  const [seedSuccess, setSeedSuccess] = useState(false);
-  
-  const isFirebaseConfigured = !!import.meta.env.VITE_FIREBASE_API_KEY || true; // Always true for now as we use config file
+  const [seedStatus, setSeedStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   
   const handleSeed = async () => {
     if (isSeeding) return;
+    
     setIsSeeding(true);
+    setSeedStatus('loading');
     setSeedProgress(0);
-    setSeedSuccess(false);
+    
     try {
-      await seedDatabase((progress) => setSeedProgress(progress));
-      setSeedSuccess(true);
-      setTimeout(() => setSeedSuccess(false), 3000);
+      await seedDatabase((progress) => {
+        setSeedProgress(progress);
+      });
+      setSeedStatus('success');
+      setTimeout(() => {
+        setSeedStatus('idle');
+        setSeedProgress(0);
+      }, 3000);
     } catch (error) {
-      console.error("Seeding failed:", error);
-      alert("Seeding failed. Check console for details.");
+      console.error('Seeding failed:', error);
+      setSeedStatus('error');
     } finally {
       setIsSeeding(false);
     }
@@ -62,28 +67,48 @@ export default function DeveloperMenu() {
             <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-center justify-between text-xs font-bold mb-1">
                 <span className="text-slate-500 uppercase tracking-wider">System Status</span>
-                <div className={`w-2 h-2 rounded-full bg-emerald-500`} />
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
               </div>
               <p className="text-[10px] text-slate-400">
-                Firebase is configured via applet config.
+                Firebase is configured and ready.
               </p>
             </div>
             
             <div className="space-y-2">
-              <button
+              <button 
                 onClick={handleSeed}
                 disabled={isSeeding}
-                className="flex items-center gap-3 w-full p-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all font-medium disabled:opacity-50"
+                className={cn(
+                  "flex items-center gap-3 w-full p-3 rounded-xl transition-all font-medium",
+                  seedStatus === 'success' ? "bg-emerald-500 text-white" : 
+                  seedStatus === 'error' ? "bg-red-500 text-white" :
+                  "bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-200"
+                )}
               >
                 {isSeeding ? (
                   <Loader2 size={20} className="animate-spin" />
-                ) : seedSuccess ? (
+                ) : seedStatus === 'success' ? (
                   <CheckCircle2 size={20} />
                 ) : (
                   <Database size={20} />
                 )}
-                {isSeeding ? `Seeding ${seedProgress}%` : seedSuccess ? 'Seeded Successfully!' : 'Seed Database'}
+                <span>
+                  {isSeeding ? `Seeding... ${seedProgress}%` : 
+                   seedStatus === 'success' ? 'Database Seeded!' : 
+                   seedStatus === 'error' ? 'Seeding Failed' :
+                   'Seed Database'}
+                </span>
               </button>
+
+              {isSeeding && (
+                <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${seedProgress}%` }}
+                    className="bg-blue-500 h-full"
+                  />
+                </div>
+              )}
 
               <a 
                 href="https://github.com/Ramesh-Karu" 
@@ -100,4 +125,8 @@ export default function DeveloperMenu() {
       </AnimatePresence>
     </>
   );
+}
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(' ');
 }

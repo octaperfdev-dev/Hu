@@ -56,8 +56,8 @@ export default function TeacherStudents() {
   }, [user]);
 
   const filteredStudents = students.filter((s: any) => 
-    s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.indexNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.indexNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

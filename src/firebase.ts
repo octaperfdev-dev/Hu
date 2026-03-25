@@ -30,8 +30,6 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
-// Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -41,29 +39,24 @@ let db: any;
 let storage: any;
 
 try {
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith('remixed-')) {
-    console.warn("Firebase API Key is missing or invalid. Please set up Firebase via the UI.");
-  }
-  
   if (getApps().length === 0) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     // Use initializeFirestore with memoryLocalCache to avoid "Unexpected state (ID: b815)" error
     // which is often related to persistent storage issues in certain environments.
-    // Respect the named database if it's provided in the config
     db = initializeFirestore(app, {
       localCache: memoryLocalCache()
-    }, (firebaseConfig as any).firestoreDatabaseId);
+    }, firebaseConfig.firestoreDatabaseId);
     storage = getStorage(app);
   } else {
     app = getApp();
     auth = getAuth(app);
     try {
-      db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+      db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
     } catch (e) {
       db = initializeFirestore(app, {
         localCache: memoryLocalCache()
-      }, (firebaseConfig as any).firestoreDatabaseId);
+      }, firebaseConfig.firestoreDatabaseId);
     }
     storage = getStorage(app);
   }
@@ -115,16 +108,35 @@ export enum OperationType {
   WRITE = 'write',
 }
 
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
+  const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map((provider: any) => ({
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData.map(provider => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,
@@ -133,7 +145,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
-  };
+  }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

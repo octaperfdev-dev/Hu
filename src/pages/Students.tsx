@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut, writeBatch } from '../firebase';
+import { db, handleFirestoreError, OperationType, collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, setDoc, initializeApp, deleteApp, getAuth, createUserWithEmailAndPassword, firebaseConfig, signOut, writeBatch, getCountFromServer, orderBy, limit, startAfter, endBefore, limitToLast } from '../firebase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { 
@@ -11,6 +11,7 @@ import {
   Edit, 
   Trash2, 
   UserPlus, 
+  Users,
   FileDown, 
   FileUp,
   X,
@@ -39,120 +40,649 @@ export default function Students() {
   const [editingStudent, setEditingStudent] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
-  const [formData, setFormData] = useState({ fullName: '', indexNumber: '', username: '', password: '', dob: '', class: '', division: '', id: '' });
-  const [healthData, setHealthData] = useState({ date: '', description: '', height: '', weight: '' });
+  const [totalCount, setTotalCount] = useState(0);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [firstDoc, setFirstDoc] = useState<any>(null);
+  const pageSize = 50;
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Import Preview States
   const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false);
   const [importPreviewData, setImportPreviewData] = useState<any[]>([]);
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // ... (existing code)
+  // Form States
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    fullName: '',
+    indexNumber: '',
+    dob: '',
+    gender: 'Male',
+    class: '',
+    division: '',
+    address: '',
+    parentName: '',
+    parentContact: '',
+    photoUrl: ''
+  });
+
+  const [healthData, setHealthData] = useState({
+    height: '',
+    weight: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  useEffect(() => {
+    if (user) {
+      fetchStudents(1);
+    }
+  }, [user]);
+
+  const fetchStudents = async (page: number = 1, direction: 'next' | 'prev' | null = null) => {
+    setLoading(true);
+    try {
+      // Get total count if it's the first load
+      let currentTotalCount = totalCount;
+      if (page === 1 && !direction) {
+        const countQuery = query(collection(db, 'users'), where('role', '==', 'student'));
+        const countSnapshot = await getCountFromServer(countQuery);
+        currentTotalCount = countSnapshot.data().count;
+        setTotalCount(currentTotalCount);
+      }
+
+      let q = query(
+        collection(db, 'users'), 
+        where('role', '==', 'student'),
+        orderBy('fullName'),
+        limit(pageSize)
+      );
+
+      if (direction === 'next' && lastDoc) {
+        q = query(q, startAfter(lastDoc));
+      } else if (direction === 'prev' && firstDoc) {
+        q = query(
+          collection(db, 'users'),
+          where('role', '==', 'student'),
+          orderBy('fullName'),
+          endBefore(firstDoc),
+          limitToLast(pageSize)
+        );
+      }
+
+      let querySnapshot = await getDocs(q);
+      
+      // Fallback if no docs returned but totalCount > 0 (might be missing fullName field)
+      if (querySnapshot.docs.length === 0 && currentTotalCount > 0 && page === 1 && !direction) {
+        q = query(
+          collection(db, 'users'),
+          where('role', '==', 'student'),
+          orderBy('__name__'),
+          limit(pageSize)
+        );
+        querySnapshot = await getDocs(q);
+      }
+
+      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      setStudents(data as any);
+      setFirstDoc(querySnapshot.docs[0]);
+      setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
+      setCurrentPage(page);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.GET, 'users');
+      let errorMessage = 'Failed to load students.';
+      try {
+        const parsedError = JSON.parse(err.message);
+        errorMessage = `Error: ${parsedError.error}`;
+      } catch (e) {
+        errorMessage = err.message || errorMessage;
+      }
+      setToast({ message: errorMessage, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (formData.id) {
-        await updateDoc(doc(db, 'students', formData.id), formData);
-        setToast({ message: 'Student updated successfully', type: 'success' });
+      if (editingStudent) {
+        // Update existing student
+        const studentRef = doc(db, 'users', editingStudent.id);
+        const updateData = { ...formData };
+        if (!updateData.password) {
+          delete (updateData as any).password;
+        }
+        await updateDoc(studentRef, updateData);
+        setToast({ message: 'Student updated successfully!', type: 'success' });
       } else {
-        await addDoc(collection(db, 'students'), formData);
-        setToast({ message: 'Student added successfully', type: 'success' });
+        // Create new student
+        const tempApp = initializeApp(firebaseConfig as any, 'temp-create-student-' + Date.now());
+        const tempAuth = getAuth(tempApp);
+        
+        const normalizedUsername = formData.username.toLowerCase().trim();
+        const systemEmail = `${normalizedUsername}@school.internal`;
+        const userCredential = await createUserWithEmailAndPassword(tempAuth, systemEmail, formData.password);
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          ...formData,
+          username: normalizedUsername,
+          systemEmail: systemEmail,
+          role: 'student',
+          passwordChanged: false,
+          profileCompleted: false,
+          points: 0,
+          createdAt: new Date().toISOString()
+        });
+        
+        await deleteApp(tempApp);
+        setToast({ message: 'Student registered successfully!', type: 'success' });
       }
-      setFormData({ fullName: '', indexNumber: '', username: '', password: '', dob: '', class: '', division: '', id: '' });
+      
+      fetchStudents(1);
       setIsModalOpen(false);
-    } catch (error) {
-      console.error('Error saving student:', error);
-      setToast({ message: 'Error saving student', type: 'error' });
+      setEditingStudent(null);
+      setFormData({
+        username: '', password: '', fullName: '', indexNumber: '', dob: '',
+        gender: 'Male', class: '', division: '', address: '', parentName: '', parentContact: '', photoUrl: ''
+      });
+    } catch (err: any) {
+      console.error("Error saving student:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      if (errorMessage.includes('auth/email-already-in-use')) {
+        setToast({ message: 'Username is already taken.', type: 'error' });
+      } else if (errorMessage.includes('auth/weak-password')) {
+        setToast({ message: 'Password should be at least 6 characters.', type: 'error' });
+      } else {
+        setToast({ message: 'Failed to save student. Please try again.', type: 'error' });
+      }
     }
+  };
+
+  const openEditModal = (student: User) => {
+    setEditingStudent(student);
+    setFormData({
+      username: student.username || '',
+      password: '', // Don't populate password
+      fullName: student.fullName || '',
+      indexNumber: student.indexNumber || '',
+      dob: student.dob || '',
+      gender: student.gender || 'Male',
+      class: student.class || '',
+      division: student.division || '',
+      address: student.address || '',
+      parentName: student.parentName || '',
+      parentContact: student.parentContact || '',
+      photoUrl: student.photoUrl || ''
+    });
+    setIsModalOpen(true);
   };
 
   const handleAddHealthRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStudent) return;
     try {
-      await addDoc(collection(db, 'students', selectedStudent.id, 'healthRecords'), healthData);
-      setHealthData({ date: '', description: '', height: '', weight: '' });
+      const heightInMeters = parseFloat(healthData.height) / 100;
+      const weightInKg = parseFloat(healthData.weight);
+      const bmi = weightInKg / (heightInMeters * heightInMeters);
+      
+      let category = 'Normal';
+      if (bmi < 18.5) category = 'Underweight';
+      else if (bmi >= 25 && bmi < 30) category = 'Overweight';
+      else if (bmi >= 30) category = 'Obese';
+
+      await addDoc(collection(db, 'health_records'), {
+        userId: selectedStudent.id,
+        height: parseFloat(healthData.height),
+        weight: parseFloat(healthData.weight),
+        bmi,
+        category,
+        date: healthData.date,
+        createdAt: new Date().toISOString()
+      });
       setIsHealthModalOpen(false);
-      setToast({ message: 'Health record added successfully', type: 'success' });
-    } catch (error) {
-      console.error('Error adding health record:', error);
-      setToast({ message: 'Error adding health record', type: 'error' });
+      setToast({ message: 'Health record added successfully!', type: 'success' });
+      setHealthData({ height: '', weight: '', date: new Date().toISOString().split('T')[0] });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'health_records');
     }
   };
 
-  const handleConfirmImport = async () => {
-    setIsImporting(true);
-    setImportProgress(0);
-    try {
-      const batch = writeBatch(db);
-      for (let i = 0; i < importPreviewData.length; i++) {
-        const studentRef = doc(collection(db, 'students'));
-        batch.set(studentRef, importPreviewData[i]);
-        setImportProgress(Math.round(((i + 1) / importPreviewData.length) * 100));
+  const handleExportCSV = () => {
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Assuming YYYY-MM-DD format from database
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateStr.split('-');
+        return `${year}.${month}.${day}`;
       }
-      await batch.commit();
-      setToast({ message: 'Import successful', type: 'success' });
-      setIsImportPreviewOpen(false);
+      return dateStr;
+    };
+
+    const dataToExport = students.map(s => ({
+      username: s.username,
+      fullName: s.fullName,
+      email: s.email,
+      indexNumber: s.indexNumber,
+      dob: formatDate(s.dob || ''),
+      class: s.class,
+      division: s.division,
+      password: '' // Blank password for template
+    }));
+    const csv = Papa.unparse(dataToExport);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'students.csv';
+    link.click();
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const parseDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Check for YYYY.MM.DD format
+      if (dateStr.match(/^\d{4}\.\d{2}\.\d{2}$/)) {
+        return dateStr.replace(/\./g, '-'); // Convert to YYYY-MM-DD
+      }
+      return dateStr; // Assume it's already YYYY-MM-DD or something else
+    };
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const data = event.target?.result;
+      
+      const preparePreview = (data: any[]) => {
+        setImportPreviewData(data);
+        setIsImportPreviewOpen(true);
+        setImportProgress(0);
+        setIsImporting(false);
+      };
+
+      if (file.name.endsWith('.csv')) {
+        Papa.parse(data as string, {
+          header: true,
+          complete: (results) => { preparePreview(results.data); }
+        });
+      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        preparePreview(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]));
+      }
+    };
+    
+    if (file.name.endsWith('.csv')) reader.readAsText(file);
+    else reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmImport = async () => {
+    const parseDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      // Check for YYYY.MM.DD format
+      if (dateStr.match(/^\d{4}\.\d{2}\.\d{2}$/)) {
+        return dateStr.replace(/\./g, '-'); // Convert to YYYY-MM-DD
+      }
+      return dateStr; // Assume it's already YYYY-MM-DD or something else
+    };
+
+    setIsImporting(true);
+    // Filter valid rows first
+    const validRows = importPreviewData.filter(row => row.username && row.fullName && row.password && row.indexNumber);
+    const total = validRows.length;
+    let completed = 0;
+    let skipped = 0;
+    let added = 0;
+    let errors = 0;
+
+    try {
+      // Pre-fetch existing students to avoid 6000+ individual queries
+      const existingSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      const existingIndexNumbers = new Set(existingSnapshot.docs.map(d => d.data().indexNumber));
+      const existingUsernames = new Set(existingSnapshot.docs.map(d => d.data().username?.toLowerCase()));
+
+      // Use Firestore batches for high performance (500 docs per batch)
+      const batchSize = 500;
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const currentBatchRows = validRows.slice(i, i + batchSize);
+        let batchCount = 0;
+
+        for (const row of currentBatchRows) {
+          try {
+            const normalizedUsername = row.username.toLowerCase().trim();
+            const systemEmail = `${normalizedUsername}@school.internal`;
+
+            // Local duplicate check (O(1) with Sets)
+            if (existingIndexNumbers.has(row.indexNumber) || existingUsernames.has(normalizedUsername)) {
+              console.log(`Skipping duplicate student: ${row.indexNumber} / ${normalizedUsername}`);
+              skipped++;
+              completed++;
+              continue;
+            }
+
+            const userRef = doc(collection(db, 'users'));
+            batch.set(userRef, {
+              email: row.email || '',
+              username: normalizedUsername,
+              systemEmail: systemEmail,
+              fullName: row.fullName,
+              indexNumber: row.indexNumber || '',
+              dob: parseDate(row.dob || ''),
+              class: row.class || '',
+              division: row.division || '',
+              role: 'student',
+              passwordChanged: false,
+              profileCompleted: false,
+              points: 0,
+              authCreated: false,
+              tempPassword: row.password,
+              createdAt: new Date().toISOString()
+            });
+            
+            // Add to local sets to prevent duplicates within the same import file
+            existingIndexNumbers.add(row.indexNumber);
+            existingUsernames.add(normalizedUsername);
+            
+            added++;
+            batchCount++;
+          } catch (err) {
+            console.error('Error preparing student for batch:', err);
+            errors++;
+          }
+          
+          completed++;
+          // Update progress even for skipped rows
+          if (completed % 10 === 0) {
+            setImportProgress(Math.round((completed / total) * 100));
+          }
+        }
+
+        if (batchCount > 0) {
+          await batch.commit();
+        }
+      }
+      
+      // Final progress update
+      setImportProgress(100);
+    } catch (err) {
+      console.error('Bulk import failed:', err);
+      setToast({ message: 'Bulk import failed. Please try again.', type: 'error' });
+    }
+    
+    setIsImporting(false);
+    setIsImportPreviewOpen(false);
+    fetchStudents();
+    
+    let message = `Import finished. ${added} added to database.`;
+    if (skipped > 0) message += ` ${skipped} skipped (duplicates).`;
+    if (errors > 0) message += ` ${errors} failed.`;
+    message += " Accounts will be created automatically on first login.";
+    
+    setToast({ message, type: errors > 0 ? 'error' : 'success' });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this student?')) return;
+    
+    try {
+      await deleteDoc(doc(db, 'users', id));
+      setToast({ message: 'Student deleted successfully', type: 'success' });
+      fetchStudents(currentPage);
     } catch (error) {
-      console.error('Error importing data:', error);
-      setToast({ message: 'Error importing data', type: 'error' });
-    } finally {
-      setIsImporting(false);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setToast({ message: `Error deleting student: ${errorMessage}`, type: 'error' });
+      handleFirestoreError(error, OperationType.DELETE, `users/${id}`);
     }
   };
 
   const filteredStudents = students.filter(s => 
-    s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.indexNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (s.indexNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-8">
-      {/* ... (existing header) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Student Management</h1>
+          <p className="text-slate-500">Register and monitor student health profiles</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-all shadow-sm"
+          >
+            <FileDown size={18} />
+            Export
+          </button>
+          <label className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-all shadow-sm cursor-pointer">
+            <FileUp size={18} />
+            Import
+            <input type="file" accept=".csv, .xlsx, .xls" onChange={handleImportFile} className="hidden" />
+          </label>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-200"
+          >
+            <UserPlus size={18} />
+            Add Student
+          </button>
+        </div>
+      </div>
 
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        {/* ... (existing search and table) */}
-        
+        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search by name or index number (current page)..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+              <span>Page {currentPage} of {Math.ceil(totalCount / pageSize) || 1}</span>
+              <span className="text-slate-300">|</span>
+              <span>Total: {totalCount}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => fetchStudents(currentPage - 1, 'prev')}
+                disabled={currentPage === 1 || loading}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button 
+                onClick={() => fetchStudents(currentPage + 1, 'next')}
+                disabled={currentPage >= Math.ceil(totalCount / pageSize) || loading}
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
+              <Filter size={20} />
+            </button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            {/* ... (existing thead) */}
+            <thead>
+              <tr className="bg-slate-50/50 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                <th className="px-6 py-4">Student</th>
+                <th className="px-6 py-4">Index No</th>
+                <th className="px-6 py-4">Class</th>
+                <th className="px-6 py-4">Gender</th>
+                <th className="px-6 py-4">Points</th>
+                <th className="px-6 py-4">Actions</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginatedStudents.map((student) => (
-                <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                  {/* ... (existing row content) */}
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-slate-500 font-medium">Loading students...</p>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+              ) : filteredStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400">
+                        <Users size={24} />
+                      </div>
+                      <p className="text-sm text-slate-500 font-medium">No students found.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredStudents.map((student) => (
+                  <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden">
+                          <img 
+                            src={student.photoUrl || `https://ui-avatars.com/api/?name=${student.fullName || 'Student'}&background=3b82f6&color=fff`} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{student.fullName || 'Unnamed Student'}</p>
+                          <p className="text-xs text-slate-500">{student.username}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">{student.indexNumber || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold">{student.class || '-'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 bg-green-50 text-green-600 rounded-lg text-xs font-bold">{student.division || '-'}</span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{student.gender || '-'}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1 text-blue-600 font-bold">
+                        <Award size={14} />
+                        {student.points || 0}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => navigate(`/health-passport/${student.id}`)}
+                          className="p-2 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
+                          title="View Health Passport"
+                        >
+                          <QrCode size={18} />
+                        </button>
+                        <button 
+                          onClick={() => { setSelectedStudent(student); setIsHealthModalOpen(true); }}
+                          className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
+                          title="Add Health Record"
+                        >
+                          <Activity size={18} />
+                        </button>
+                        <button 
+                          onClick={() => openEditModal(student)}
+                          className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
+                          title="Edit Student"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button onClick={() => handleDelete(student.id)} className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
-        
-        {/* Pagination Controls */}
-        <div className="p-6 border-t border-slate-100 flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredStudents.length)} to {Math.min(currentPage * itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students
-          </p>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="text-sm font-bold text-slate-700">Page {currentPage} of {totalPages || 1}</span>
-            <button 
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || totalPages === 0}
-              className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              <ChevronRight size={18} />
-            </button>
+      </div>
+
+      <div className="flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="text-sm text-slate-500">
+          Showing <span className="font-bold text-slate-900">{(currentPage - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * pageSize, totalCount)}</span> of <span className="font-bold text-slate-900">{totalCount}</span> students
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => fetchStudents(1)}
+            disabled={currentPage === 1 || loading}
+            className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl disabled:opacity-30 transition-colors"
+          >
+            First
+          </button>
+          <button 
+            onClick={() => fetchStudents(currentPage - 1, 'prev')}
+            disabled={currentPage === 1 || loading}
+            className="flex items-center gap-1 px-4 py-2 bg-slate-50 text-slate-700 rounded-xl font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            <ChevronLeft size={18} />
+            Previous
+          </button>
+          <div className="flex items-center gap-1">
+            {[...Array(Math.min(5, Math.ceil(totalCount / pageSize)))].map((_, i) => {
+              let pageNum: number;
+              const totalPages = Math.ceil(totalCount / pageSize);
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => {
+                    if (pageNum > currentPage) fetchStudents(pageNum, 'next');
+                    else if (pageNum < currentPage) fetchStudents(pageNum, 'prev');
+                  }}
+                  disabled={loading}
+                  className={`w-10 h-10 rounded-xl font-bold transition-all ${
+                    currentPage === pageNum 
+                      ? 'bg-blue-500 text-white shadow-lg shadow-blue-200' 
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
           </div>
+          <button 
+            onClick={() => fetchStudents(currentPage + 1, 'next')}
+            disabled={currentPage >= Math.ceil(totalCount / pageSize) || loading}
+            className="flex items-center gap-1 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-200"
+          >
+            Next
+            <ChevronRight size={18} />
+          </button>
+          <button 
+            onClick={() => fetchStudents(Math.ceil(totalCount / pageSize), 'next')}
+            disabled={currentPage >= Math.ceil(totalCount / pageSize) || loading}
+            className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl disabled:opacity-30 transition-colors"
+          >
+            Last
+          </button>
         </div>
       </div>
 

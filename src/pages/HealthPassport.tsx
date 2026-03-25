@@ -85,14 +85,14 @@ export default function HealthPassport() {
       } else {
         setStudent(null);
       }
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `users/${targetId}`));
     unsubscribes.push(unsubscribeStudent);
 
     // Real-time health records listener
     const hrQuery = query(collection(db, 'health_records'), where('userId', '==', targetId), orderBy('date', 'desc'));
     const unsubscribeHR = onSnapshot(hrQuery, (snapshot) => {
       setHealthHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'health_records'));
     unsubscribes.push(unsubscribeHR);
 
     // Real-time activities listener
