@@ -66,24 +66,26 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "octaperf.dev@gmail.com" && request.auth.token.email_verified == true));
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "octaperf.dev@gmail.com" && request.auth.token.email_verified == true)
+        );
     }
 
     function isTeacher() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
 
     function isCoach() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach';
     }
 
     function isOrganicAdmin() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'organic-admin';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'organic-admin';
     }
 
     function isBreakfastAdmin() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'breakfast-admin';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'breakfast-admin';
     }
 
     function hasRequiredFields(fields) {
@@ -103,8 +105,7 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return data.uid is string &&
-             data.email is string && isValidEmail(data.email) &&
+      return data.email is string && isValidEmail(data.email) &&
              data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
              data.role in ['student', 'teacher', 'coach', 'admin', 'organic-admin', 'breakfast-admin'];
     }
@@ -112,8 +113,7 @@ service cloud.firestore {
     function isValidHealthRecord(data) {
       return data.userId is string &&
              data.height is number && data.height > 0 &&
-             data.weight is number && data.weight > 0 &&
-             data.date is string;
+             data.weight is number && data.weight > 0;
     }
 
     function isValidReservation(data) {

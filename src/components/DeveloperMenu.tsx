@@ -1,16 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Code, Github, X, User, Database, Loader2, CheckCircle2 } from 'lucide-react';
-import { seedDatabase } from '../firebase';
+import { Code, Github, X, User, Database, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { seedDatabase, auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function DeveloperMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedProgress, setSeedProgress] = useState(0);
   const [seedStatus, setSeedStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+  
+  const isAdminEmail = currentUser?.email === 'octaperf.dev@gmail.com';
   
   const handleSeed = async () => {
     if (isSeeding) return;
+    if (!currentUser) {
+      alert('Please sign in with Google first to seed the database.');
+      return;
+    }
+    if (!isAdminEmail) {
+      alert('Only the system owner (octaperf.dev@gmail.com) can seed the database.');
+      return;
+    }
     
     setIsSeeding(true);
     setSeedStatus('loading');
@@ -73,6 +92,15 @@ export default function DeveloperMenu() {
                 Firebase is configured and ready.
               </p>
             </div>
+
+            {!currentUser && (
+              <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
+                <AlertTriangle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-[10px] text-amber-700 leading-tight">
+                  Please <strong>Sign in with Google</strong> as <strong>octaperf.dev@gmail.com</strong> before seeding.
+                </p>
+              </div>
+            )}
             
             <div className="space-y-2">
               <button 
